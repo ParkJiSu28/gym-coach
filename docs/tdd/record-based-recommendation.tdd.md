@@ -19,10 +19,10 @@
 
 | 단계 | 커밋 | 증거 |
 |---|---|---|
-| 기준선 | `e68fccd` | 기존 52개 단위 테스트 통과 |
-| RED | `a5ec61e` | vitest: 7개 파일 모듈 없음(compile-time RED) + 5개 단언 실패(runtime RED), 기존 50개 통과 · playwright: **14 failed / 1 passed** |
-| GREEN | `bcc75aa` | vitest **156/156** · 커버리지 lines 98.6% / branches 96.5% / functions 98.8% · playwright **15/15** |
-| 버그 수정 (RED→GREEN) | `8491069` | RED: `inferWeekdays` 화요일 기록 1건·n=2 → `[월,화]` 연속 재현 / GREEN: vitest 157/157, playwright 15/15 |
+| 기준선 | `d8439d8` | 기존 52개 단위 테스트 통과 |
+| RED | `e629949` | vitest: 7개 파일 모듈 없음(compile-time RED) + 5개 단언 실패(runtime RED), 기존 50개 통과 · playwright: **14 failed / 1 passed** |
+| GREEN | `4416208` | vitest **156/156** · 커버리지 lines 98.6% / branches 96.5% / functions 98.8% · playwright **15/15** |
+| 버그 수정 (RED→GREEN) | `0f8fd63` | RED: `inferWeekdays` 화요일 기록 1건·n=2 → `[월,화]` 연속 재현 / GREEN: vitest 157/157, playwright 15/15 |
 
 ## 테스트 명세 (무엇이 보장되는가)
 
