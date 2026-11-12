@@ -100,6 +100,30 @@ test.describe('J1 — 측정치 직접 입력', () => {
     }
   });
 
+  test('캡처 글자를 붙여넣으면 종목·세트를 인식하고, 확인 후 저장한다', async ({ page }) => {
+    const pasted = [
+      '5:554', '•ll 5G', '100)', '저장', 'AD DramaBox | INSTALL', '하체b(햄/둔)', ':', '+ 웜업 스트레칭', 'PRO',
+      '힙 쓰러스트 머신', ':', '메모...', '-', '세트', '+', '불러오기',
+      '1', '40 kg', '10회', '2', '40 kg', '10회', '3', '40 kg', '10회',
+      '데드리프트', '仁', '+ 종목 추가', '메모...', '아침 저녁', '여유', '언제 어디서든 즐거움이 가득', 'BIGO LIVE',
+    ].join('\n');
+    await page.goto('/#log');
+    const imp = card(page, '캡처 글자로 가져오기');
+    await imp.getByLabel('복사한 글자 붙여넣기').fill(pasted);
+    await imp.getByRole('button', { name: '분석' }).click();
+
+    await expect(imp.getByText('하체b(햄/둔)')).toBeVisible();
+    const hip = imp.getByRole('group', { name: '힙 쓰러스트 머신' });
+    await expect(hip.getByRole('combobox', { name: '종목' })).toHaveValue('machine_hip_thrust');
+    await expect(hip.getByText('40×10, 40×10, 40×10')).toBeVisible();
+    await expect(imp.getByRole('group', { name: '데드리프트' }).getByText(/세트 없음/)).toBeVisible();
+
+    await imp.getByLabel('운동한 날짜').fill(localDate(4));
+    await imp.getByRole('button', { name: /1개 종목 저장/ }).click();
+    await expect(imp.getByRole('status')).toContainText('1개 종목 · 3세트 저장됨');
+    await expect(card(page, '직접 입력한 기록').getByText('힙 쓰러스트 머신')).toBeVisible();
+  });
+
   test('미래 날짜는 저장되지 않고 오류를 보여준다', async ({ page }) => {
     await page.goto('/#log');
     await addManualRecord(page, { daysAgo: -2, exercise: '바벨 벤치프레스', sets: [[80, 8]] });
