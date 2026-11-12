@@ -47,8 +47,22 @@ export function inferWeekdays(sets: SetLog[], now: number, n: number): number[] 
   for (const wd of dayKeys.values()) freq.set(wd, (freq.get(wd) ?? 0) + 1);
   const ranked = [...freq.entries()].sort((a, b) => b[1] - a[1] || ((a[0] + 6) % 7) - ((b[0] + 6) % 7)).map(([wd]) => wd);
   const picked = ranked.slice(0, count);
-  for (const d of DEFAULT_WEEKDAYS[count]!) if (picked.length < count && !picked.includes(d)) picked.push(d);
-  for (let d = 1; picked.length < count && d <= 7; d++) if (!picked.includes(d % 7)) picked.push(d % 7);
+  if (picked.length === 0) return [...DEFAULT_WEEKDAYS[count]!];
+  // 남은 요일은 이미 고른 요일과 최대한 떨어지게 채운다 (연속 운동일 → 회복 부족 방지)
+  const gap = (a: number, b: number) => Math.min((a - b + 7) % 7, (b - a + 7) % 7);
+  while (picked.length < count) {
+    let best = -1;
+    let bestGap = -1;
+    for (const d of [1, 2, 3, 4, 5, 6, 0]) {
+      if (picked.includes(d)) continue;
+      const g = Math.min(...picked.map((p) => gap(p, d)));
+      if (g > bestGap) {
+        best = d;
+        bestGap = g;
+      }
+    }
+    picked.push(best);
+  }
   return sortWeekdays(picked);
 }
 

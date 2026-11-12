@@ -1,13 +1,12 @@
+import type { Dispatch, SetStateAction } from 'react';
 import { sortWeekdays, WEEKDAY_LABEL } from '../engine/schedule';
 
 const ORDER = [1, 2, 3, 4, 5, 6, 0];
 
-/** 운동 가능 요일 선택 (최대 6일) */
-export function WeekdayPicker({ value, onChange }: { value: number[]; onChange: (v: number[]) => void }) {
-  const toggle = (d: number) => {
-    if (value.includes(d)) onChange(value.filter((x) => x !== d));
-    else if (value.length < 6) onChange(sortWeekdays([...value, d]));
-  };
+/** 운동 가능 요일 선택 (최대 6일). 빠르게 연속으로 눌러도 누락되지 않도록 함수형 업데이트 사용 */
+export function WeekdayPicker({ value, onChange }: { value: number[]; onChange: Dispatch<SetStateAction<number[]>> }) {
+  const toggle = (d: number) =>
+    onChange((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : prev.length < 6 ? sortWeekdays([...prev, d]) : prev));
   return (
     <div role="group" aria-label="운동 가능 요일" className="grid grid-cols-7 gap-1">
       {ORDER.map((d) => {

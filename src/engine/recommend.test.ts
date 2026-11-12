@@ -72,6 +72,21 @@ describe('inferWeekdays — 자주 운동한 요일', () => {
     expect(new Set(r)).toEqual(days);
   });
 
+  it('기록 요일이 일부만 있으면 나머지는 그 요일과 붙지 않게 띄워서 채움', () => {
+    // 기록한 요일이 무엇이든(일~토 7가지) 성립해야 함
+    for (let daysAgo = 1; daysAgo <= 7; daysAgo++) {
+      const one = rec('squat', daysAgo, 100, 8, 1); // 하루만 기록
+      const recorded = new Date(one[0]!.completedAt).getDay();
+      for (const n of [2, 3]) {
+        const r = inferWeekdays(one, NOW, n);
+        expect(r).toContain(recorded);
+        expect(r).toHaveLength(n);
+        const set = new Set(r);
+        expect(r.some((d) => set.has((d + 1) % 7)), `기록 요일 ${recorded}, n=${n} → ${r}`).toBe(false); // 연속 요일 없음
+      }
+    }
+  });
+
   it('기록이 부족하면 하루씩 띄운 기본 요일로 채움', () => {
     expect(inferWeekdays([], NOW, 3)).toEqual([1, 3, 5]);
     expect(inferWeekdays([], NOW, 4)).toEqual([1, 2, 4, 5]);
