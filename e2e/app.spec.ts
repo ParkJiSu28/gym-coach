@@ -112,7 +112,7 @@ test.describe('J1 — 측정치 직접 입력', () => {
     await imp.getByLabel('복사한 글자 붙여넣기').fill(pasted);
     await imp.getByRole('button', { name: '분석' }).click();
 
-    await expect(imp.getByText('하체b(햄/둔)')).toBeVisible();
+    await expect(imp.getByText('하체b(햄/둔)', { exact: true })).toBeVisible();
     const hip = imp.getByRole('group', { name: '힙 쓰러스트 머신' });
     await expect(hip.getByRole('combobox', { name: '종목' })).toHaveValue('machine_hip_thrust');
     await expect(hip.getByText('40×10, 40×10, 40×10')).toBeVisible();

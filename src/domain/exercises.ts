@@ -63,6 +63,7 @@ export const EXERCISES: Exercise[] = [
   { id: 'lying_leg_curl', name: '라잉 레그 컬', equipment: 'machine', compound: false, increment: 2.5, muscles: { hamstrings: 1 } },
   { id: 'seated_leg_curl', name: '시티드 레그 컬', equipment: 'machine', compound: false, increment: 2.5, muscles: { hamstrings: 1 } },
   { id: 'hip_thrust', name: '힙 쓰러스트', equipment: 'barbell', compound: true, increment: 5, muscles: { glutes: 1, hamstrings: 0.5 } },
+  { id: 'machine_hip_thrust', name: '힙 쓰러스트 머신', equipment: 'machine', compound: true, increment: 5, muscles: { glutes: 1, hamstrings: 0.5 } },
   { id: 'standing_calf_raise', name: '스탠딩 카프 레이즈', equipment: 'machine', compound: false, increment: 5, muscles: { calves: 1 } },
   { id: 'seated_calf_raise', name: '시티드 카프 레이즈', equipment: 'machine', compound: false, increment: 5, muscles: { calves: 1 } },
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Tab } from '../App';
 import { ManualEntryForm, ManualEntryList } from '../components/ManualEntry';
+import { PasteImport } from '../components/PasteImport';
 import { RestTimer } from '../components/RestTimer';
 import { Badge, Button, Card, Empty, Stepper, WhyCard, fmtDuration } from '../components/ui';
 import { db, deleteSession, finishSession, loadCustomExercises, logSet, startSession, swapExercise, updateSet } from '../data/db';
@@ -111,6 +112,7 @@ export function LogPage({ go }: { go: (t: Tab) => void }) {
             </Button>
           </div>
         </Card>
+        <PasteImport />
         <ManualEntryForm />
         <ManualEntryList />
       </div>
