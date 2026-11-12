@@ -20,6 +20,20 @@ textarea {
   font-size: max(16px, 1em);
 }
 
+/* iOS Safari 날짜 칸: 기본 외형·최소 폭을 풀어 부모 너비를 따르게 */
+input[type='date'] {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+input[type='date']::-webkit-date-and-time-value {
+  text-align: left;
+  margin: 0;
+}
+
 /* 노치·홈 인디케이터 영역 */
 #root {
   padding-top: env(safe-area-inset-top);

@@ -54,7 +54,8 @@ export function ManualEntryForm() {
   return (
     <Card title="지난 기록 직접 입력">
       <p className="mb-3 text-sm text-slate-400">다른 앱에 있던 기록을 날짜별로 옮겨 적으세요. RIR(실패까지 남은 횟수)은 모르면 "모름"으로 두면 됩니다.</p>
-      <div className="grid grid-cols-2 gap-2">
+      {/* iOS Safari 의 날짜 칸은 내부 최소 폭 때문에 좁은 칸에서 옆 칸을 덮는다 → 한 줄씩 전체 너비 */}
+      <div className="flex flex-col gap-2">
         <label className="flex flex-col gap-1 text-xs text-slate-400">
           날짜
           <input type="date" value={date} max={todayStr()} onChange={(e) => setDate(e.target.value)} className={`${inputCls} text-left`} />

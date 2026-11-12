@@ -85,6 +85,21 @@ test.describe('J1 — 측정치 직접 입력', () => {
     await expect(card(page, '운동 이력').getByText(/3세트/)).toBeVisible();
   });
 
+  test('날짜·운동 칸이 겹치지 않게 각각 한 줄 전체 너비로 배치된다 (iOS 날짜 칸 확장 대응)', async ({ page }) => {
+    await page.goto('/#log');
+    const form = card(page, '지난 기록 직접 입력');
+    const date = (await form.getByLabel('날짜').boundingBox())!;
+    const ex = (await form.getByRole('combobox', { name: '운동' }).boundingBox())!;
+    const box = (await form.boundingBox())!;
+    // 위아래로 쌓임 (겹침 없음)
+    expect(date.y + date.height).toBeLessThanOrEqual(ex.y);
+    // 각 칸이 카드 안쪽 폭을 거의 다 사용 (나란히 두지 않음)
+    for (const b of [date, ex]) {
+      expect(b.width).toBeGreaterThan(box.width * 0.8);
+      expect(b.x + b.width).toBeLessThanOrEqual(box.x + box.width);
+    }
+  });
+
   test('미래 날짜는 저장되지 않고 오류를 보여준다', async ({ page }) => {
     await page.goto('/#log');
     await addManualRecord(page, { daysAgo: -2, exercise: '바벨 벤치프레스', sets: [[80, 8]] });
