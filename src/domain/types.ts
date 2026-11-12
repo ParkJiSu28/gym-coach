@@ -62,6 +62,10 @@ export interface WorkoutSession {
   programId?: number;
   dayId?: string;
   note?: string;
+  /** 다른 앱 기록을 손으로 옮겨 적은 세션 (실제 운동 시간·휴식 정보 없음) */
+  manual?: boolean;
+  /** 이번 세션에서 바꾼 종목: 계획 종목 id → 실제 수행 종목 id */
+  swaps?: Record<string, string>;
 }
 
 export interface SetLog {
@@ -77,6 +81,8 @@ export interface SetLog {
   restSec?: number;
   completedAt: number;
   warmup?: boolean;
+  /** RIR 을 직접 재지 않아 기본값으로 채운 경우 true */
+  rirEstimated?: boolean;
 }
 
 /** 주관적 컨디션 체크인 (1 = 최악, 5 = 최상). soreness 는 5 = 근육통 없음, stress 는 5 = 스트레스 없음. */
@@ -116,6 +122,8 @@ export interface Program {
   mesoStart: number;
   mesoWeeks: number;
   priorities: Muscle[];
+  /** 운동 가능 요일 (0=일 … 6=토, 월요일부터 정렬). 없으면 순환 방식 */
+  weekdays?: number[];
 }
 
 export type EvidenceLevel = 'meta-analysis' | 'rct' | 'consensus' | 'expert-opinion' | 'model';

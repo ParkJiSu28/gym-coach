@@ -7,6 +7,7 @@ import { getExercise } from '../domain/exercises';
 import { VOLUME_LANDMARKS } from '../domain/research';
 import { MUSCLES, MUSCLE_LABEL } from '../domain/types';
 import { PLATEAU_TIPS, detectPlateau } from '../engine/analysis';
+import { buildReport, type Report } from '../engine/report';
 import { exerciseHistory, sessionBestE1RM } from '../engine/progression';
 import { VOLUME_STATUS_LABEL, WEEK_MS, muscleFrequency, volumeStatus, weeklyVolume } from '../engine/volume';
 
@@ -24,6 +25,7 @@ export function StatsPage() {
   const sessions = useSessions();
 
   const weekly = useMemo(() => weeklyVolume(sets, now), [sets, now]);
+  const report = useMemo(() => buildReport({ sets, now }), [sets, now]);
   const freq = useMemo(() => muscleFrequency(sets, now - WEEK_MS, now + 1), [sets, now]);
 
   const exerciseIds = useMemo(() => {
@@ -55,6 +57,8 @@ export function StatsPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">분석</h1>
+
+      <ReportCard report={report} />
 
       <Card title="최근 7일 부위별 볼륨">
         <p className="mb-3 flex flex-wrap items-center gap-1 text-xs text-slate-400">
@@ -158,7 +162,7 @@ export function StatsPage() {
                     <details>
                       <summary className="flex items-center justify-between text-sm">
                         <span>
-                          {fmtDate(s.startedAt)} <span className="text-slate-500">· {mins}분 · {ss.length}세트</span>
+                          {fmtDate(s.startedAt)} <span className="text-slate-500">· {s.manual ? "직접 입력" : `${mins}분`} · {ss.length}세트</span>
                         </span>
                         <span className="text-xs text-slate-400 tabular-nums">{Math.round(tonnage).toLocaleString()}kg</span>
                       </summary>
@@ -180,6 +184,45 @@ export function StatsPage() {
 
       <BackupCard />
     </div>
+  );
+}
+
+function ReportCard({ report }: { report: Report }) {
+  return (
+    <Card title="분석 리포트">
+      {!report.hasData ? (
+        <Empty>최근 4주 기록이 없습니다. 운동을 기록하거나 지난 기록을 입력하면 부위별로 논문 기준 분석을 보여드립니다.</Empty>
+      ) : (
+        <>
+          <p className="mb-3 text-xs text-slate-400">최근 7일 기준 · 근비대 목적 · 문제 있는 부위부터</p>
+          <ul className="space-y-2">
+            {report.muscles.map((m) => (
+              <li key={m.muscle} className="rounded-xl bg-slate-950/50 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold">{MUSCLE_LABEL[m.muscle]}</span>
+                  <Badge tone={STATUS_TONE[m.status]}>{VOLUME_STATUS_LABEL[m.status]}</Badge>
+                </div>
+                <p className="mt-0.5 text-xs text-slate-500 tabular-nums">
+                  주 {m.weeklySets}세트 · 주 {m.frequency}회 · 권장 {m.mavLow}~{m.mavHigh}세트
+                </p>
+                <p className="mt-1 text-sm text-slate-300">{m.action.text}</p>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {m.action.citations.map((c) => (
+                    <CitationChip key={c} id={c} />
+                  ))}
+                </div>
+              </li>
+            ))}
+          </ul>
+          {report.tips.length > 0 && (
+            <div className="mt-3">
+              <p className="text-sm font-semibold">훈련 방식 점검</p>
+              <WhyCard reasons={report.tips} open />
+            </div>
+          )}
+        </>
+      )}
+    </Card>
   );
 }
 

@@ -11,6 +11,9 @@ export const EXERCISES: Exercise[] = [
   { id: 'dips', name: '딥스', equipment: 'bodyweight', compound: true, increment: 2.5, muscles: { chest: 1, triceps: 1, front_delts: 0.5 } },
   { id: 'cable_fly', name: '케이블 플라이', equipment: 'cable', compound: false, increment: 2.5, muscles: { chest: 1 } },
   { id: 'pec_deck', name: '펙덱 플라이', equipment: 'machine', compound: false, increment: 5, muscles: { chest: 1 } },
+  { id: 'smith_bench', name: '스미스 벤치프레스', equipment: 'smith', compound: true, increment: 2.5, muscles: { chest: 1, triceps: 0.5, front_delts: 0.5 } },
+  { id: 'smith_incline_bench', name: '스미스 인클라인 벤치프레스', equipment: 'smith', compound: true, increment: 2.5, muscles: { chest: 1, front_delts: 0.5, triceps: 0.5 } },
+  { id: 'db_fly', name: '덤벨 플라이', equipment: 'dumbbell', compound: false, increment: 1, muscles: { chest: 1 } },
   { id: 'push_up', name: '푸시업', equipment: 'bodyweight', compound: true, increment: 0, muscles: { chest: 1, triceps: 0.5, front_delts: 0.5 } },
 
   // ── 등
@@ -20,12 +23,15 @@ export const EXERCISES: Exercise[] = [
   { id: 'db_row', name: '원암 덤벨 로우', equipment: 'dumbbell', compound: true, increment: 2, muscles: { lats: 1, upper_back: 1, biceps: 0.5, rear_delts: 0.5 } },
   { id: 'seated_cable_row', name: '시티드 케이블 로우', equipment: 'cable', compound: true, increment: 5, muscles: { upper_back: 1, lats: 1, biceps: 0.5, rear_delts: 0.5 } },
   { id: 'chest_supported_row', name: '체스트 서포티드 로우', equipment: 'machine', compound: true, increment: 5, muscles: { upper_back: 1, lats: 0.5, rear_delts: 0.5, biceps: 0.5 } },
+  { id: 't_bar_row', name: 'T바 로우', equipment: 'machine', compound: true, increment: 5, muscles: { upper_back: 1, lats: 1, rear_delts: 0.5, biceps: 0.5 } },
   { id: 'straight_arm_pulldown', name: '스트레이트 암 풀다운', equipment: 'cable', compound: false, increment: 2.5, muscles: { lats: 1 } },
   { id: 'shrug', name: '슈러그', equipment: 'dumbbell', compound: false, increment: 2, muscles: { upper_back: 1, forearms: 0.5 } },
 
   // ── 어깨
   { id: 'ohp', name: '오버헤드 프레스', equipment: 'barbell', compound: true, increment: 2.5, muscles: { front_delts: 1, side_delts: 0.5, triceps: 0.5 } },
   { id: 'db_shoulder_press', name: '덤벨 숄더 프레스', equipment: 'dumbbell', compound: true, increment: 2, muscles: { front_delts: 1, side_delts: 0.5, triceps: 0.5 } },
+  { id: 'smith_ohp', name: '스미스 숄더 프레스', equipment: 'smith', compound: true, increment: 2.5, muscles: { front_delts: 1, side_delts: 0.5, triceps: 0.5 } },
+  { id: 'machine_shoulder_press', name: '머신 숄더 프레스', equipment: 'machine', compound: true, increment: 5, muscles: { front_delts: 1, side_delts: 0.5, triceps: 0.5 } },
   { id: 'lateral_raise', name: '사이드 레터럴 레이즈', equipment: 'dumbbell', compound: false, increment: 1, muscles: { side_delts: 1 } },
   { id: 'cable_lateral_raise', name: '케이블 레터럴 레이즈', equipment: 'cable', compound: false, increment: 1.25, muscles: { side_delts: 1 } },
   { id: 'rear_delt_fly', name: '리어 델트 플라이', equipment: 'machine', compound: false, increment: 2.5, muscles: { rear_delts: 1, upper_back: 0.5 } },
@@ -36,6 +42,7 @@ export const EXERCISES: Exercise[] = [
   { id: 'db_curl', name: '덤벨 컬', equipment: 'dumbbell', compound: false, increment: 1, muscles: { biceps: 1, forearms: 0.5 } },
   { id: 'incline_db_curl', name: '인클라인 덤벨 컬', equipment: 'dumbbell', compound: false, increment: 1, muscles: { biceps: 1 } },
   { id: 'hammer_curl', name: '해머 컬', equipment: 'dumbbell', compound: false, increment: 1, muscles: { biceps: 1, forearms: 1 } },
+  { id: 'cable_curl', name: '케이블 컬', equipment: 'cable', compound: false, increment: 2.5, muscles: { biceps: 1 } },
   { id: 'preacher_curl', name: '프리처 컬', equipment: 'machine', compound: false, increment: 2.5, muscles: { biceps: 1 } },
   { id: 'triceps_pushdown', name: '트라이셉스 푸시다운', equipment: 'cable', compound: false, increment: 2.5, muscles: { triceps: 1 } },
   { id: 'overhead_triceps_ext', name: '오버헤드 트라이셉스 익스텐션', equipment: 'cable', compound: false, increment: 2.5, muscles: { triceps: 1 } },
@@ -46,6 +53,7 @@ export const EXERCISES: Exercise[] = [
   // ── 하체
   { id: 'squat', name: '바벨 백스쿼트', equipment: 'barbell', compound: true, increment: 2.5, muscles: { quads: 1, glutes: 1, lower_back: 0.5 } },
   { id: 'front_squat', name: '프론트 스쿼트', equipment: 'barbell', compound: true, increment: 2.5, muscles: { quads: 1, glutes: 0.5, upper_back: 0.5 } },
+  { id: 'smith_squat', name: '스미스 스쿼트', equipment: 'smith', compound: true, increment: 2.5, muscles: { quads: 1, glutes: 1 } },
   { id: 'hack_squat', name: '핵 스쿼트', equipment: 'machine', compound: true, increment: 5, muscles: { quads: 1, glutes: 0.5 } },
   { id: 'leg_press', name: '레그 프레스', equipment: 'machine', compound: true, increment: 10, muscles: { quads: 1, glutes: 0.5 } },
   { id: 'bulgarian_split_squat', name: '불가리안 스플릿 스쿼트', equipment: 'dumbbell', compound: true, increment: 2, muscles: { quads: 1, glutes: 1 } },

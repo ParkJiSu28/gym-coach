@@ -86,7 +86,7 @@ describe('db', () => {
       expect(sessions).toHaveLength(1);
       expect(sessions[0]!.manual).toBe(true);
       expect(sessions[0]!.endedAt).toBeGreaterThanOrEqual(sessions[0]!.startedAt);
-      const sets = await database.sets.orderBy('order').toArray();
+      const sets = (await database.sets.toArray()).sort((a, b) => a.order - b.order);
       expect(sets.map((s) => [s.weight, s.reps])).toEqual([
         [80, 8],
         [80, 7],

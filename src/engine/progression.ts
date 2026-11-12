@@ -219,7 +219,9 @@ export function suggestNext(input: SuggestInput): Suggestion {
     };
   }
 
-  if (avgRir < rir - 1) {
+  // RIR 을 직접 재지 않은 기록(추정값)으로는 "실패에 너무 가까움" 판단을 하지 않는다
+  const rirMeasured = topSets.every((s) => !s.rirEstimated);
+  if (rirMeasured && avgRir < rir - 1) {
     return {
       action: 'hold',
       weight: topWeight,

@@ -7,7 +7,9 @@ import { useActiveProgram, useAllSets, useAnalysisNow, useCheckins, useOpenSessi
 import { MUSCLE_LABEL, type Muscle } from '../domain/types';
 import { buildContext, planDay } from '../engine/planner';
 import { ACTION_LABEL } from '../engine/progression';
+import { scheduledDayFor, upcomingSessions, WEEKDAY_LABEL } from '../engine/schedule';
 import { dayDurationMin, nextProgramDay } from '../engine/splits';
+import { RecommendPanel } from '../components/RecommendPanel';
 import { WEEK_MS } from '../engine/volume';
 
 export function TodayPage({ go }: { go: (t: Tab) => void }) {
@@ -20,7 +22,12 @@ export function TodayPage({ go }: { go: (t: Tab) => void }) {
   const [checkinOpen, setCheckinOpen] = useState(false);
 
   const ctx = useMemo(() => buildContext({ now, sets, checkins, program: program ?? undefined }), [now, sets, checkins, program]);
-  const day = program ? nextProgramDay(program, sessions) : undefined;
+  const rotationDay = program ? nextProgramDay(program, sessions) : undefined;
+  // 요일 일정이 있으면 오늘 요일의 세션(없으면 휴식일), 없으면 순환 순서
+  const scheduled = program ? scheduledDayFor(program, now) : undefined;
+  const restDay = scheduled === null;
+  const nextUp = program && restDay ? upcomingSessions(program, now, 1)[0] : undefined;
+  const day = scheduled === undefined ? rotationDay : (scheduled ?? nextUp?.day);
   const plan = useMemo(() => (day ? planDay(ctx, day) : []), [ctx, day]);
 
   const startOfDay = new Date(now).setHours(0, 0, 0, 0);
@@ -77,6 +84,8 @@ export function TodayPage({ go }: { go: (t: Tab) => void }) {
         </Card>
       )}
 
+      <RecommendPanel initialWeekdays={program?.weekdays ?? []} />
+
       {!checkedInToday && (
         <Card title="컨디션 체크인" right={<Button variant="subtle" onClick={() => setCheckinOpen(!checkinOpen)}>{checkinOpen ? '닫기' : '체크인'}</Button>}>
           <p className="text-sm text-slate-400">수면·근육통·의욕·스트레스를 기록하면 오늘 세트 수를 컨디션에 맞게 조절합니다.</p>
@@ -101,7 +110,8 @@ export function TodayPage({ go }: { go: (t: Tab) => void }) {
         <Card
           title={
             <span>
-              다음 세션: {day.name} <span className="text-sm font-normal text-slate-400">· 약 {dayDurationMin(day)}분</span>
+              {restDay ? `오늘은 휴식일 · 다음: ${nextUp ? WEEKDAY_LABEL[new Date(nextUp.date).getDay()] + ' ' : ''}${day.name}` : scheduled ? `오늘: ${day.name}` : `다음 세션: ${day.name}`}{' '}
+              <span className="text-sm font-normal text-slate-400">· 약 {dayDurationMin(day)}분</span>
             </span>
           }
         >
@@ -129,7 +139,7 @@ export function TodayPage({ go }: { go: (t: Tab) => void }) {
           </ul>
           {!open && (
             <Button className="mt-4 w-full py-3 text-base" onClick={startDay}>
-              {day.name} 시작
+              {restDay ? `그래도 오늘 운동하기 · ${day.name} 시작` : `${day.name} 시작`}
             </Button>
           )}
         </Card>

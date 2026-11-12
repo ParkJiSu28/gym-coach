@@ -1,13 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Tab } from '../App';
+import { ManualEntryForm, ManualEntryList } from '../components/ManualEntry';
+import { RestTimer } from '../components/RestTimer';
 import { Badge, Button, Card, Empty, Stepper, WhyCard, fmtDuration } from '../components/ui';
-import { db, deleteSession, finishSession, loadCustomExercises, logSet, startSession } from '../data/db';
+import { db, deleteSession, finishSession, loadCustomExercises, logSet, startSession, swapExercise, updateSet } from '../data/db';
 import { useActiveProgram, useAllSets, useCheckins, useNow, useOpenSession, useSessions } from '../data/hooks';
-import { allExercises } from '../domain/exercises';
-import { MUSCLES, MUSCLE_LABEL, type Muscle, type SetLog } from '../domain/types';
+import { allExercises, getExercise } from '../domain/exercises';
+import { MUSCLES, MUSCLE_LABEL, type Muscle, type ProgramExercise, type SetLog } from '../domain/types';
 import { buildContext, planExercise, type ExercisePlan } from '../engine/planner';
-import { ACTION_LABEL, exerciseHistory } from '../engine/progression';
-import { nextProgramDay } from '../engine/splits';
+import { ACTION_LABEL, exerciseHistory, recommendedRest } from '../engine/progression';
+import { DEFAULT_UNKNOWN_RIR, ManualRecordError } from '../engine/records';
+import { scheduledDayFor } from '../engine/schedule';
+import { defaultRepRange, nextProgramDay } from '../engine/splits';
+import { alternativesFor, replaceInProgram } from '../engine/swap';
+import { keepScreenOn, unlockAudio } from '../lib/alert';
+
+/** 화면에 표시할 종목 칸: 실제 수행 종목 id + (있다면) 원래 계획 종목 id */
+interface Slot {
+  id: string;
+  plannedId?: string;
+  pe?: ProgramExercise;
+}
 
 export function LogPage({ go }: { go: (t: Tab) => void }) {
   const open = useOpenSession();
@@ -18,9 +31,9 @@ export function LogPage({ go }: { go: (t: Tab) => void }) {
   const now = useNow(1000);
   const [extra, setExtra] = useState<string[]>([]);
   const [picker, setPicker] = useState(false);
+  const [swapping, setSwapping] = useState<Slot | null>(null);
 
-  // 1분 단위(또는 데이터 변경 시)로만 컨텍스트 재계산 — 타이머 매초 갱신과 분리.
-  // now 를 분 단위로 내림하면 방금 끝낸 세트가 "미래"로 취급되므로 실제 현재 시각을 사용한다.
+  // 1분 단위(또는 데이터 변경 시)로만 컨텍스트 재계산 — 타이머 매초 갱신과 분리
   const minute = Math.floor(now / 60_000);
   const ctx = useMemo(
     () => buildContext({ now: Date.now(), sets: allSets, checkins, program: program ?? undefined, excludeSessionId: open?.id }),
@@ -31,67 +44,82 @@ export function LogPage({ go }: { go: (t: Tab) => void }) {
   const sessionSets = useMemo(() => (open?.id ? allSets.filter((s) => s.sessionId === open.id) : []), [allSets, open?.id]);
   const day = program && open && open.programId === program.id ? program.days.find((d) => d.id === open.dayId) : undefined;
 
-  const exerciseIds = useMemo(() => {
-    const ids = [...(day?.exercises.map((e) => e.exerciseId) ?? []), ...sessionSets.map((s) => s.exerciseId), ...extra];
-    return [...new Set(ids)];
-  }, [day, sessionSets, extra]);
+  const slots = useMemo<Slot[]>(() => {
+    const swaps = open?.swaps ?? {};
+    const out: Slot[] = [];
+    for (const pe of day?.exercises ?? []) {
+      const to = swaps[pe.exerciseId];
+      const ex = to ? getExercise(to) : undefined;
+      if (to && ex) {
+        const [repMin, repMax] = defaultRepRange(ex);
+        out.push({ id: to, plannedId: pe.exerciseId, pe: { ...pe, exerciseId: to, repMin, repMax, restSec: recommendedRest(ex) } });
+      } else out.push({ id: pe.exerciseId, plannedId: pe.exerciseId, pe });
+    }
+    for (const id of [...sessionSets.map((s) => s.exerciseId), ...extra.map((x) => swaps[x] ?? x)]) {
+      if (!out.some((s) => s.id === id)) out.push({ id });
+    }
+    return out;
+  }, [day, sessionSets, extra, open?.swaps]);
 
   const plans = useMemo(
-    () =>
-      exerciseIds
-        .map((id) => planExercise(ctx, id, day?.exercises.find((e) => e.exerciseId === id)))
-        .filter((p): p is ExercisePlan => p !== null),
-    [exerciseIds, ctx, day],
+    () => slots.map((slot) => ({ slot, plan: planExercise(ctx, slot.id, slot.pe) })).filter((x): x is { slot: Slot; plan: ExercisePlan } => x.plan !== null),
+    [slots, ctx],
   );
 
-  // 휴식 타이머
-  const lastSet = sessionSets.at(-1);
-  const restTarget = plans.find((p) => p.exercise.id === lastSet?.exerciseId)?.restSec ?? 120;
-  const restElapsed = lastSet ? (now - lastSet.completedAt) / 1000 : null;
-  const buzzedFor = useRef<number | undefined>(undefined);
+  // 운동 중 화면 꺼짐 방지
   useEffect(() => {
-    if (restElapsed !== null && lastSet?.id !== undefined && restElapsed >= restTarget && buzzedFor.current !== lastSet.id) {
-      buzzedFor.current = lastSet.id;
-      try {
-        navigator.vibrate?.([200, 100, 200]);
-      } catch {
-        /* 진동 미지원 기기 */
-      }
-    }
-  }, [restElapsed, restTarget, lastSet?.id]);
+    if (!open) return;
+    let release: () => void = () => undefined;
+    const acquire = () => void keepScreenOn().then((r) => (release = r));
+    acquire();
+    const onVis = () => document.visibilityState === 'visible' && acquire();
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      release();
+    };
+  }, [open]);
 
   if (open === undefined) return null;
 
   if (open === null) {
-    const nextDay = program ? nextProgramDay(program, sessions) : undefined;
+    const today = program ? scheduledDayFor(program, Date.now()) : undefined;
+    const nextDay = today ?? (program ? nextProgramDay(program, sessions) : undefined);
+    const begin = (init?: { programId?: number; dayId?: string }) => {
+      unlockAudio();
+      return startSession(init);
+    };
     return (
       <div className="space-y-4">
         <h1 className="text-2xl font-bold">운동 기록</h1>
-        <Card>
+        <Card title="운동 시작">
           <div className="space-y-2">
             {program?.id && nextDay && (
-              <Button className="w-full py-3 text-base" onClick={() => startSession({ programId: program.id, dayId: nextDay.id })}>
+              <Button className="w-full py-3 text-base" onClick={() => begin({ programId: program.id, dayId: nextDay.id })}>
                 루틴 시작: {nextDay.name}
               </Button>
             )}
             {program?.days
               .filter((d) => d.id !== nextDay?.id)
               .map((d) => (
-                <Button key={d.id} variant="ghost" className="w-full" onClick={() => startSession({ programId: program.id, dayId: d.id })}>
+                <Button key={d.id} variant="ghost" className="w-full" onClick={() => begin({ programId: program.id, dayId: d.id })}>
                   {d.name}
                 </Button>
               ))}
-            <Button variant="subtle" className="w-full" onClick={() => startSession()}>
+            <Button variant="subtle" className="w-full" onClick={() => begin()}>
               자유 운동 시작
             </Button>
           </div>
         </Card>
-        <RecentSessionsHint sessions={sessions.filter((s) => s.endedAt).slice(0, 3)} sets={allSets} />
+        <ManualEntryForm />
+        <ManualEntryList />
       </div>
     );
   }
 
   const elapsedMin = Math.floor((now - open.startedAt) / 60_000);
+  const lastSet = sessionSets.at(-1);
+  const restTarget = plans.find((p) => p.plan.exercise.id === lastSet?.exerciseId)?.plan.restSec ?? 120;
 
   async function finish() {
     if (!open?.id) return;
@@ -105,6 +133,20 @@ export function LogPage({ go }: { go: (t: Tab) => void }) {
     if (!window.confirm('이 세션과 기록된 세트를 모두 삭제할까요?')) return;
     await deleteSession(open.id);
     setExtra([]);
+  }
+
+  async function doSwap(slot: Slot, to: string, alsoRoutine: boolean) {
+    if (!open?.id) return;
+    if (slot.plannedId) {
+      await swapExercise(open.id, slot.plannedId, to);
+      if (alsoRoutine && program?.id && day) {
+        await db.programs.update(program.id, { days: replaceInProgram(program, day.id, slot.plannedId, to).days });
+        await swapExercise(open.id, slot.plannedId, slot.plannedId); // 루틴 자체가 바뀌었으므로 세션 교체 내역은 불필요
+      }
+    } else {
+      setExtra((e) => [...e.filter((x) => x !== slot.id), to]);
+    }
+    setSwapping(null);
   }
 
   return (
@@ -121,30 +163,22 @@ export function LogPage({ go }: { go: (t: Tab) => void }) {
         </Button>
       </header>
 
-      {restElapsed !== null && (
-        <div
-          className={`sticky top-2 z-10 flex items-center justify-between rounded-2xl border px-4 py-3 backdrop-blur ${
-            restElapsed >= restTarget ? 'border-emerald-600 bg-emerald-950/90' : 'border-slate-700 bg-slate-900/90'
-          }`}
-          role="timer"
-          aria-live="off"
-        >
-          <span className="text-sm text-slate-300">휴식</span>
-          <span className="text-3xl font-bold tabular-nums">{fmtDuration(restElapsed)}</span>
-          <span className="text-sm text-slate-400">목표 {fmtDuration(restTarget)}</span>
-        </div>
-      )}
+      {lastSet && <RestTimer startedAt={lastSet.completedAt} defaultTarget={restTarget} now={now} setKey={lastSet.id} />}
 
       {plans.length === 0 && <Empty>아래에서 운동을 추가하세요.</Empty>}
 
-      {plans.map((p) => (
-        <ExerciseLogCard
-          key={p.exercise.id}
-          plan={p}
-          sessionId={open.id!}
-          done={sessionSets.filter((s) => s.exerciseId === p.exercise.id)}
-          lastTime={exerciseHistory(ctx.sets, p.exercise.id).at(-1)?.sets}
-        />
+      {plans.map(({ slot, plan }) => (
+        <div key={slot.id} className="space-y-2">
+          <ExerciseLogCard
+            plan={plan}
+            sessionId={open.id!}
+            done={sessionSets.filter((s) => s.exerciseId === plan.exercise.id)}
+            lastTime={exerciseHistory(ctx.sets, plan.exercise.id).at(-1)?.sets}
+            swappedFrom={slot.plannedId && slot.plannedId !== slot.id ? getExercise(slot.plannedId)?.name : undefined}
+            onSwap={() => setSwapping(swapping?.id === slot.id ? null : slot)}
+          />
+          {swapping?.id === slot.id && <SwapPicker slot={slot} canApplyToRoutine={!!slot.plannedId && !!day} onPick={(to, routine) => doSwap(slot, to, routine)} onClose={() => setSwapping(null)} />}
+        </div>
       ))}
 
       {picker ? (
@@ -168,19 +202,65 @@ export function LogPage({ go }: { go: (t: Tab) => void }) {
   );
 }
 
-const RIR_OPTIONS = [0, 1, 2, 3, 4, 5];
+// ─────────────────────────────── RIR 선택
 
-function ExerciseLogCard({ plan, sessionId, done, lastTime }: { plan: ExercisePlan; sessionId: number; done: SetLog[]; lastTime?: SetLog[] }) {
+/** null = 모름 (기본값으로 채우고 "추정"으로 표시) */
+function RirChoice({ value, onChange }: { value: number | null; onChange: (v: number | null) => void }) {
+  const opts: { v: number | null; label: string }[] = [
+    { v: 0, label: '0' },
+    { v: 1, label: '1' },
+    { v: 2, label: '2' },
+    { v: 3, label: '3' },
+    { v: 4, label: '4+' },
+    { v: null, label: '모름' },
+  ];
+  return (
+    <div>
+      <span className="text-xs text-slate-400">몇 개 더 할 수 있었나요? (RIR · 0 = 더는 못 함)</span>
+      <div className="mt-1 grid grid-cols-6 gap-1">
+        {opts.map((o) => (
+          <button
+            key={o.label}
+            type="button"
+            onClick={() => onChange(o.v)}
+            aria-pressed={value === o.v}
+            className={`h-10 rounded-lg text-sm font-semibold ${value === o.v ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-slate-300'}`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────── 종목 카드
+
+function ExerciseLogCard({
+  plan,
+  sessionId,
+  done,
+  lastTime,
+  swappedFrom,
+  onSwap,
+}: {
+  plan: ExercisePlan;
+  sessionId: number;
+  done: SetLog[];
+  lastTime?: SetLog[];
+  swappedFrom?: string;
+  onSwap: () => void;
+}) {
   const s = plan.suggestion;
   const inc = plan.exercise.increment || 1;
   const initWeight = done.at(-1)?.weight ?? s.weight ?? lastTime?.at(-1)?.weight ?? 20;
   const initReps = done.at(-1)?.reps ?? s.repsTarget;
-  const initRir = done.at(-1)?.rir ?? s.rir;
   const [weight, setWeightRaw] = useState(initWeight);
   const [reps, setRepsRaw] = useState(initReps);
-  const [rir, setRirRaw] = useState(initRir);
+  const [rir, setRir] = useState<number | null>(null);
   const [warmup, setWarmup] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState<number | null>(null);
   const working = done.filter((d) => !d.warmup);
 
   // DB 로드가 끝나 처방이 바뀌면, 사용자가 직접 수정하기 전까지는 입력값을 처방에 맞춘다
@@ -189,58 +269,65 @@ function ExerciseLogCard({ plan, sessionId, done, lastTime }: { plan: ExercisePl
     if (touched.current) return;
     setWeightRaw(initWeight);
     setRepsRaw(initReps);
-    setRirRaw(initRir);
-  }, [initWeight, initReps, initRir]);
+  }, [initWeight, initReps]);
   const setWeight = (v: number) => ((touched.current = true), setWeightRaw(v));
   const setReps = (v: number) => ((touched.current = true), setRepsRaw(v));
-  const setRir = (v: number) => ((touched.current = true), setRirRaw(v));
 
   async function add() {
+    unlockAudio();
     setBusy(true);
     try {
-      await logSet({ sessionId, exerciseId: plan.exercise.id, weight, reps, rir, warmup });
+      await logSet({ sessionId, exerciseId: plan.exercise.id, weight, reps, rir: rir ?? DEFAULT_UNKNOWN_RIR, rirEstimated: rir === null, warmup });
       setWarmup(false);
     } finally {
       setBusy(false);
     }
   }
 
+  let workNo = 0;
   return (
     <Card
       title={plan.exercise.name}
       right={
-        <span className="flex items-center gap-1">
+        <span className="flex items-center gap-1.5">
           <Badge tone={working.length >= s.sets ? 'emerald' : 'slate'}>
             {working.length}/{s.sets}세트
           </Badge>
+          <button type="button" onClick={onSwap} className="rounded-lg border border-slate-700 px-2 py-1 text-xs text-slate-200">
+            교체
+          </button>
         </span>
       }
     >
+      {swappedFrom && <p className="mb-1 text-xs text-sky-300">↺ {swappedFrom} 대신</p>}
       <p className="text-sm text-slate-300 tabular-nums">
-        <Badge tone="sky">{ACTION_LABEL[s.action]}</Badge>{' '}
-        목표 {s.weight === null ? '무게 찾기' : `${s.weight}kg`} × {s.repsTarget}회 · RIR {s.rir} · 범위 {plan.repMin}~{plan.repMax}회
+        <Badge tone="sky">{ACTION_LABEL[s.action]}</Badge> 목표 {s.weight === null ? '무게 찾기' : `${s.weight}kg`} × {s.repsTarget}회 · RIR {s.rir} · 범위 {plan.repMin}~{plan.repMax}회
       </p>
-      {lastTime && (
-        <p className="mt-1 text-xs text-slate-500 tabular-nums">
-          지난번: {lastTime.map((x) => `${x.weight}×${x.reps}`).join(', ')}
-        </p>
-      )}
+      {lastTime && <p className="mt-1 text-xs text-slate-500 tabular-nums">지난번: {lastTime.map((x) => `${x.weight}×${x.reps}`).join(', ')}</p>}
       <WhyCard reasons={plan.reasons} />
 
       {done.length > 0 && (
         <ol className="mt-3 space-y-1">
-          {done.map((d, i) => (
-            <li key={d.id} className="flex items-center justify-between rounded-lg bg-slate-950/60 px-3 py-1.5 text-sm tabular-nums">
-              <span className="w-6 text-slate-500">{d.warmup ? 'W' : i + 1 - done.slice(0, i).filter((x) => x.warmup).length}</span>
-              <span className="flex-1">
-                {d.weight}kg × {d.reps} <span className="text-slate-400">RIR {d.rir}</span>
-              </span>
-              {d.restSec !== undefined && <span className="mr-2 text-xs text-slate-500">휴식 {fmtDuration(d.restSec)}</span>}
-              <button type="button" aria-label="세트 삭제" className="px-2 text-slate-500 hover:text-rose-400" onClick={() => d.id && db.sets.delete(d.id)}>
-                ✕
-              </button>
-            </li>
-          ))}
+          {done.map((d) => {
+            const label = d.warmup ? 'W' : String(++workNo);
+            return editing === d.id ? (
+              <SetEditor key={d.id} set={d} inc={inc} onDone={() => setEditing(null)} />
+            ) : (
+              <li key={d.id} className="flex items-center gap-1 rounded-lg bg-slate-950/60 px-3 py-1.5 text-sm tabular-nums">
+                <span className="w-6 text-slate-500">{label}</span>
+                <span className="flex-1">
+                  {d.weight}kg × {d.reps} <span className="text-slate-400">{d.rirEstimated ? 'RIR 추정' : `RIR ${d.rir}`}</span>
+                </span>
+                {d.restSec !== undefined && <span className="mr-1 text-xs text-slate-500">휴식 {fmtDuration(d.restSec)}</span>}
+                <button type="button" aria-label={`${label}세트 수정`} className="px-1.5 text-xs text-slate-400 hover:text-emerald-300" onClick={() => setEditing(d.id ?? null)}>
+                  수정
+                </button>
+                <button type="button" aria-label={`${label}세트 삭제`} className="px-1.5 text-slate-500 hover:text-rose-400" onClick={() => d.id && db.sets.delete(d.id)}>
+                  ✕
+                </button>
+              </li>
+            );
+          })}
         </ol>
       )}
 
@@ -249,19 +336,7 @@ function ExerciseLogCard({ plan, sessionId, done, lastTime }: { plan: ExercisePl
         <Stepper label="반복" suffix="회" value={reps} onChange={setReps} step={1} />
       </div>
       <div className="mt-2">
-        <span className="text-xs text-slate-400">RIR (실패까지 남은 횟수)</span>
-        <div className="mt-1 grid grid-cols-6 gap-1">
-          {RIR_OPTIONS.map((r) => (
-            <button
-              key={r}
-              type="button"
-              onClick={() => setRir(r)}
-              className={`h-9 rounded-lg text-sm font-semibold ${rir === r ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-slate-300'}`}
-            >
-              {r === 0 ? '0 실패' : r === 5 ? '5+' : r}
-            </button>
-          ))}
-        </div>
+        <RirChoice value={rir} onChange={setRir} />
       </div>
       <div className="mt-3 flex items-center gap-3">
         <label className="flex items-center gap-1.5 text-sm text-slate-400">
@@ -275,6 +350,121 @@ function ExerciseLogCard({ plan, sessionId, done, lastTime }: { plan: ExercisePl
     </Card>
   );
 }
+
+function SetEditor({ set, inc, onDone }: { set: SetLog; inc: number; onDone: () => void }) {
+  const [weight, setWeight] = useState(set.weight);
+  const [reps, setReps] = useState(set.reps);
+  const [rir, setRir] = useState<number | null>(set.rirEstimated ? null : set.rir);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function save() {
+    try {
+      await updateSet(set.id!, { weight, reps, rir });
+      onDone();
+    } catch (e) {
+      setErr(e instanceof ManualRecordError ? e.message : '수정에 실패했습니다.');
+    }
+  }
+
+  return (
+    <li className="space-y-2 rounded-lg border border-emerald-800 bg-slate-950/80 p-2">
+      <div className="grid grid-cols-2 gap-2">
+        <Stepper label="수정 무게" suffix="kg" value={weight} onChange={setWeight} step={inc} />
+        <Stepper label="수정 반복" suffix="회" value={reps} onChange={setReps} step={1} />
+      </div>
+      <RirChoice value={rir} onChange={setRir} />
+      {err && (
+        <p role="alert" className="text-sm text-rose-300">
+          {err}
+        </p>
+      )}
+      <div className="flex gap-2">
+        <Button variant="ghost" className="flex-1" onClick={onDone}>
+          취소
+        </Button>
+        <Button className="flex-1" onClick={save}>
+          수정 저장
+        </Button>
+      </div>
+    </li>
+  );
+}
+
+// ─────────────────────────────── 종목 교체
+
+function SwapPicker({
+  slot,
+  canApplyToRoutine,
+  onPick,
+  onClose,
+}: {
+  slot: Slot;
+  canApplyToRoutine: boolean;
+  onPick: (to: string, alsoRoutine: boolean) => void;
+  onClose: () => void;
+}) {
+  const [q, setQ] = useState('');
+  const [chosen, setChosen] = useState<string | null>(null);
+  const base = slot.plannedId ?? slot.id;
+  const alts = alternativesFor(slot.id, 8);
+  const list = q.trim() ? allExercises().filter((e) => e.id !== slot.id && e.name.includes(q.trim())) : alts;
+
+  return (
+    <Card title="종목 교체" right={<Button variant="subtle" onClick={onClose}>닫기</Button>} className="border-sky-800">
+      {chosen ? (
+        <div className="space-y-2">
+          <p className="text-sm">
+            <b>{getExercise(chosen)?.name}</b>(으)로 바꿉니다.
+          </p>
+          <div className="flex gap-2">
+            <Button variant="ghost" className="flex-1" onClick={() => onPick(chosen, false)}>
+              이번만
+            </Button>
+            {canApplyToRoutine && (
+              <Button className="flex-1" onClick={() => onPick(chosen, true)}>
+                루틴에도 반영
+              </Button>
+            )}
+          </div>
+          {!canApplyToRoutine && (
+            <Button variant="ghost" className="w-full" onClick={() => onPick(chosen, false)}>
+              바꾸기
+            </Button>
+          )}
+        </div>
+      ) : (
+        <>
+          <p className="mb-2 text-xs text-slate-400">같은 부위를 자극하는 종목입니다. 처음 하는 종목은 "무게 찾기"부터 시작합니다.</p>
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="다른 종목 검색"
+            className="mb-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-base outline-none focus:border-emerald-500"
+          />
+          <ul className="max-h-72 space-y-1 overflow-y-auto">
+            {base !== slot.id && (
+              <li>
+                <button type="button" onClick={() => setChosen(base)} className="w-full rounded-lg px-3 py-2 text-left text-sky-300 hover:bg-slate-800">
+                  ↺ 원래 종목으로: {getExercise(base)?.name}
+                </button>
+              </li>
+            )}
+            {list.map((e) => (
+              <li key={e.id}>
+                <button type="button" onClick={() => setChosen(e.id)} className="flex w-full justify-between rounded-lg px-3 py-2 text-left hover:bg-slate-800">
+                  <span>{e.name}</span>
+                  <span className="text-xs text-slate-500">{e.compound ? '복합' : '고립'}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </Card>
+  );
+}
+
+// ─────────────────────────────── 운동 추가
 
 function ExercisePicker({ onPick, onClose }: { onPick: (id: string) => void; onClose: () => void }) {
   const [q, setQ] = useState('');
@@ -300,7 +490,7 @@ function ExercisePicker({ onPick, onClose }: { onPick: (id: string) => void; onC
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="운동 이름 검색"
-        className="mb-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 outline-none focus:border-emerald-500"
+        className="mb-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-base outline-none focus:border-emerald-500"
       />
       <ul className="max-h-72 space-y-1 overflow-y-auto">
         {list.map((e) => (
@@ -319,13 +509,8 @@ function ExercisePicker({ onPick, onClose }: { onPick: (id: string) => void; onC
       </ul>
       {creating ? (
         <div className="mt-3 space-y-2 border-t border-slate-800 pt-3">
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="새 운동 이름"
-            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 outline-none"
-          />
-          <select value={muscle} onChange={(e) => setMuscle(e.target.value as Muscle)} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5">
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="새 운동 이름" className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-base outline-none" />
+          <select value={muscle} onChange={(e) => setMuscle(e.target.value as Muscle)} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-base">
             {MUSCLES.map((m) => (
               <option key={m} value={m}>
                 주동근: {MUSCLE_LABEL[m]}
@@ -345,25 +530,6 @@ function ExercisePicker({ onPick, onClose }: { onPick: (id: string) => void; onC
           목록에 없는 운동 만들기
         </Button>
       )}
-    </Card>
-  );
-}
-
-function RecentSessionsHint({ sessions, sets }: { sessions: { id?: number; startedAt: number }[]; sets: SetLog[] }) {
-  if (sessions.length === 0) return null;
-  return (
-    <Card title="최근 운동">
-      <ul className="space-y-1 text-sm text-slate-300">
-        {sessions.map((s) => {
-          const n = sets.filter((x) => x.sessionId === s.id && !x.warmup).length;
-          return (
-            <li key={s.id} className="flex justify-between">
-              <span>{new Date(s.startedAt).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric', weekday: 'short' })}</span>
-              <span className="text-slate-400">{n}세트</span>
-            </li>
-          );
-        })}
-      </ul>
     </Card>
   );
 }

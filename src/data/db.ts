@@ -1,6 +1,14 @@
 import Dexie, { type Table } from 'dexie';
 import { registerCustomExercises } from '../domain/exercises';
 import type { Checkin, Exercise, Program, SetLog, WorkoutSession } from '../domain/types';
+import {
+  DEFAULT_UNKNOWN_RIR,
+  ManualRecordError,
+  manualSetTimes,
+  validateManualEntry,
+  validateSetValues,
+  type ManualEntry,
+} from '../engine/records';
 
 export class GymDB extends Dexie {
   sessions!: Table<WorkoutSession, number>;
@@ -63,6 +71,85 @@ export async function deleteSession(id: number, database: GymDB = db): Promise<v
     await database.sets.where('sessionId').equals(id).delete();
     await database.sessions.delete(id);
   });
+}
+
+// ─────────────────────────────── 직접 입력 · 수정 · 교체
+
+/** 다른 앱 기록을 손으로 입력: 같은 날짜는 하나의 manual 세션으로 묶는다 */
+export async function addManualEntry(entry: ManualEntry, now = Date.now(), database: GymDB = db): Promise<number> {
+  const v = validateManualEntry(entry, now);
+  const dayStart = new Date(v.date).setHours(0, 0, 0, 0);
+  const dayEnd = dayStart + 24 * 60 * 60 * 1000;
+
+  return database.transaction('rw', database.sessions, database.sets, async () => {
+    let session = await database.sessions
+      .where('startedAt')
+      .between(dayStart, dayEnd, true, false)
+      .filter((s) => s.manual === true)
+      .first();
+    const existing = session?.id ? await database.sets.where('sessionId').equals(session.id).count() : 0;
+    const times = manualSetTimes(v.date, v.sets.length, now, existing);
+
+    if (!session?.id) {
+      const id = await database.sessions.add({ startedAt: times[0]!, endedAt: times.at(-1)!, manual: true });
+      session = { id, startedAt: times[0]!, manual: true };
+    }
+    const sessionId = session.id!;
+    await database.sets.bulkAdd(
+      v.sets.map((s, i) => ({
+        sessionId,
+        exerciseId: v.exerciseId,
+        order: existing + i,
+        weight: s.weight,
+        reps: s.reps,
+        rir: s.rir,
+        rirEstimated: s.rirEstimated,
+        completedAt: times[i]!,
+      })),
+    );
+    const all = await database.sets.where('sessionId').equals(sessionId).toArray();
+    await database.sessions.update(sessionId, {
+      startedAt: Math.min(...all.map((s) => s.completedAt)),
+      endedAt: Math.max(...all.map((s) => s.completedAt)),
+    });
+    return sessionId;
+  });
+}
+
+/** 세션에서 한 종목의 세트를 모두 삭제. 남은 세트가 없으면 세션도 삭제 */
+export async function deleteExerciseSets(sessionId: number, exerciseId: string, database: GymDB = db): Promise<void> {
+  await database.transaction('rw', database.sessions, database.sets, async () => {
+    await database.sets.where('sessionId').equals(sessionId).filter((s) => s.exerciseId === exerciseId).delete();
+    if ((await database.sets.where('sessionId').equals(sessionId).count()) === 0) await database.sessions.delete(sessionId);
+  });
+}
+
+/** 기록한 세트 수정. RIR 을 입력하면 "추정" 표시를 해제한다 */
+export async function updateSet(id: number, patch: { weight?: number; reps?: number; rir?: number | null }, database: GymDB = db): Promise<void> {
+  validateSetValues(patch);
+  const cur = await database.sets.get(id);
+  if (!cur) throw new ManualRecordError('세트를 찾을 수 없습니다.');
+  const next: Partial<SetLog> = {};
+  if (patch.weight !== undefined) next.weight = patch.weight;
+  if (patch.reps !== undefined) next.reps = patch.reps;
+  if (patch.rir === null) {
+    next.rir = DEFAULT_UNKNOWN_RIR;
+    next.rirEstimated = true;
+  } else if (patch.rir !== undefined) {
+    next.rir = patch.rir;
+    next.rirEstimated = false;
+  }
+  await database.sets.update(id, next);
+}
+
+/** 운동 중 종목 교체: 계획 종목(from) → 실제 종목(to). to === from 이면 교체 취소 */
+export async function swapExercise(sessionId: number, from: string, to: string, database: GymDB = db): Promise<void> {
+  const s = await database.sessions.get(sessionId);
+  if (!s) throw new Error('세션을 찾을 수 없습니다.');
+  const swaps = { ...(s.swaps ?? {}) };
+  if (from === to) delete swaps[from];
+  else swaps[from] = to;
+  await database.sessions.update(sessionId, { swaps });
 }
 
 // ─────────────────────────────── 프로그램

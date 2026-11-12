@@ -118,6 +118,7 @@ export function Stepper({
         <input
           type="number"
           inputMode="decimal"
+          aria-label={label}
           value={Number.isFinite(value) ? value : ''}
           onChange={(e) => set(Number(e.target.value))}
           className="h-11 w-full min-w-0 bg-transparent text-center text-lg font-semibold tabular-nums outline-none"

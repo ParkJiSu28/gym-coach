@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Badge, Button, Card, CitationChip, WhyCard } from '../components/ui';
 import { db, saveActiveProgram } from '../data/db';
-import { useActiveProgram, useNow } from '../data/hooks';
+import { useActiveProgram, useAllSets, useCheckins, useNow, useSessions } from '../data/hooks';
+import { WeekdayPicker } from '../components/WeekdayPicker';
+import { recommendFromRecords } from '../engine/recommend';
+import { scheduleWarnings, sortWeekdays, WEEKDAY_LABEL, weekdayPlan } from '../engine/schedule';
 import { allExercises, getExercise } from '../domain/exercises';
 import { VOLUME_LANDMARKS } from '../domain/research';
 import { MUSCLES, MUSCLE_LABEL, type Muscle, type Program, type SplitId } from '../domain/types';
@@ -271,6 +274,46 @@ function VolumeTable({ program, daysPerWeek }: { program: Program; daysPerWeek: 
   );
 }
 
+// ─────────────────────────────── 주간 일정 (운동 가능 요일)
+
+function ScheduleCard({ program }: { program: Program }) {
+  const sets = useAllSets();
+  const sessions = useSessions();
+  const checkins = useCheckins();
+  const [weekdays, setWeekdays] = useState<number[]>(program.weekdays ?? []);
+  const plan = weekdayPlan(program);
+  const changed = JSON.stringify(sortWeekdays(weekdays)) !== JSON.stringify(program.weekdays ?? []);
+  const warnings = weekdays.length >= 2 ? scheduleWarnings(program.splitId, weekdays) : [];
+
+  async function apply() {
+    // 요일이 바뀌면 분할·종목·세트를 내 기록 기준으로 다시 짠다
+    const rec = recommendFromRecords({ sets, sessions, checkins, now: Date.now(), overrides: { weekdays } });
+    await saveActiveProgram({ ...rec.program, createdAt: Date.now(), mesoStart: Date.now() });
+  }
+
+  return (
+    <Card title="주간 일정">
+      {plan.length > 0 ? (
+        <ul className="mb-3 space-y-1 text-sm">
+          {plan.map(({ weekday, day }) => (
+            <li key={weekday} className="rounded-lg bg-slate-950/50 px-3 py-2">
+              {WEEKDAY_LABEL[weekday]} · {day.name}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mb-3 text-sm text-slate-400">요일이 정해지지 않아 순서대로 진행합니다. 운동 가능한 요일을 고르면 그에 맞게 프로그램을 다시 짭니다.</p>
+      )}
+      <WeekdayPicker value={weekdays} onChange={setWeekdays} />
+      <WhyCard reasons={warnings} open />
+      <Button className="mt-3 w-full" onClick={apply} disabled={!changed || weekdays.length < 2}>
+        요일 변경 적용
+      </Button>
+      <p className="mt-1 text-xs text-slate-500">적용하면 요일 수에 맞는 분할로 다시 만들고 메소사이클을 1주차부터 시작합니다.</p>
+    </Card>
+  );
+}
+
 // ─────────────────────────────── 활성 루틴 편집
 
 function ProgramEditor({ program }: { program: Program }) {
@@ -302,6 +345,7 @@ function ProgramEditor({ program }: { program: Program }) {
           메소사이클 처음부터
         </Button>
       </Card>
+      <ScheduleCard program={program} />
       <Card title="구성 편집">
         <DayList program={shown} editable onChange={setDraft} />
         <VolumeTable program={shown} daysPerWeek={shown.days.length} />

@@ -22,9 +22,10 @@ function Step({ n, title, children, cites }: { n: number; title: string; childre
 export function GuidePage() {
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold">루틴 짜는 법</h1>
+      <h1 className="text-2xl font-bold">근비대 루틴 짜는 법</h1>
+      <p className="text-sm text-slate-400">이 앱은 <b>근력(1RM)보다 근육 크기(근비대)</b>를 목표로 처방합니다.</p>
 
-      <Card title="근비대 루틴 7단계">
+      <Card title="근비대 루틴 8단계">
         <ol className="space-y-3">
           <Step n={1} title="주당 운동 가능 일수 → 분할법 결정" cites={['schoenfeld2016freq']}>
             <p>2~3일: 무분할 · 4일: 상·하체 · 5일: 상·하체+PPL · 6일: PPL×2.</p>
@@ -34,13 +35,16 @@ export function GuidePage() {
             <p>실패 근처까지 한 "하드 세트"만 셉니다. 벤치프레스는 가슴 1세트 + 삼두·전면 삼각근 0.5세트로 계산합니다.</p>
             <p>볼륨이 늘수록 효과는 커지지만 점점 체감됩니다. 낮게 시작해 회복되는 만큼 올리세요.</p>
           </Step>
-          <Step n={3} title="반복 범위: 6~30회 모두 유효" cites={['schoenfeld2017load']}>
-            <p>실패에 가깝게 한다면 무게 자체보다 노력 정도가 중요합니다.</p>
-            <p>앱 기본값: 복합 6~10회, 고립 10~15회, 측면 삼각근·종아리 12~20회.</p>
+          <Step n={3} title="반복 범위: 6~30회 모두 유효, 6~12회가 효율적" cites={['schoenfeld2017load', 'schoenfeld2021continuum']}>
+            <p>실패에 가깝게 한다면 무게 자체보다 노력 정도가 중요합니다. 1~5회 저반복은 근력에 유리하지만 근비대엔 시간 대비 비효율적입니다.</p>
+            <p>앱 기본값: 바벨 복합 6~10회 · 머신/덤벨/스미스 복합 8~12회 · 고립 10~15회 · 측면 삼각근·종아리 12~20회.</p>
           </Step>
-          <Step n={4} title="강도: 실패까지 0~3회 남기기 (RIR)" cites={['refalo2023', 'helms2016']}>
-            <p>매 세트 완전 실패는 필요 없습니다. 메소사이클 1주차 RIR 3 → 마지막 주 RIR 0~1로 점점 가깝게.</p>
-            <p>RIR을 솔직하게 기록할수록 다음 처방이 정확해집니다.</p>
+          <Step n={4} title="강도: 실패까지 0~3회 남기기 (RIR)" cites={['refalo2023', 'robinson2024', 'halperin2022']}>
+            <p>근비대는 실패에 가까울수록 커지는 경향이 있지만, 매 세트 완전 실패는 필요 없습니다. 1주차 RIR 3 → 마지막 주 RIR 0~1.</p>
+            <p>
+              <b>RIR 을 재본 적이 없다면:</b> 세트를 끝내고 "같은 자세로 몇 개 더 할 수 있었나?"만 고르세요. 처음엔 대부분 1개쯤 적게 예상하고, 기록할수록 정확해집니다.
+              모르면 "모름"을 눌러도 됩니다 — 앱이 RIR 2로 가정하고 "추정"으로 표시합니다.
+            </p>
           </Step>
           <Step n={5} title="휴식: 복합 2~3분, 고립 1.5~2분" cites={['schoenfeld2016rest', 'singer2024']}>
             <p>60초 이하 휴식은 다음 세트 반복 수를 줄여 총 자극을 떨어뜨립니다. 앱이 세트 완료 시 자동으로 휴식을 측정합니다.</p>
@@ -52,6 +56,10 @@ export function GuidePage() {
           <Step n={7} title="4~8주마다 디로딩" cites={['bell2023']}>
             <p>세트 수를 절반으로, 무게는 약간 낮추고, 실패에서 4회 이상 여유를 둡니다.</p>
             <p>수행 하락이 여러 종목에서 보이거나 컨디션이 계속 나쁘면 앞당깁니다.</p>
+          </Step>
+          <Step n={8} title="종목 선택: 늘어난 위치 + 적당한 변화" cites={['maeo2021', 'pedrosa2022', 'kassiano2022']}>
+            <p>근육이 길게 늘어난 위치에서 부하를 받는 종목이 유리합니다 (시티드 레그 컬, 인클라인 컬, 오버헤드 익스텐션 등).</p>
+            <p>같은 부위에 2가지 종목을 섞거나 메소사이클마다 일부 종목을 바꾸면 고르게 발달합니다. 운동 중 "교체" 버튼으로 언제든 바꾸세요.</p>
           </Step>
         </ol>
       </Card>

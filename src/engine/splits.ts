@@ -3,6 +3,7 @@ import { VOLUME_LANDMARKS } from '../domain/research';
 import type { Exercise, Muscle, Program, ProgramDay, ProgramExercise, SplitId, WorkoutSession } from '../domain/types';
 import type { Reason } from './progression';
 import { recommendedRest } from './progression';
+import { sortWeekdays } from './schedule';
 import { emptyMuscleMap } from './volume';
 
 export interface SplitInfo {
@@ -71,23 +72,23 @@ export const SPLIT_INFO: Record<SplitId, SplitInfo> = {
 type DayTemplate = { name: string; exercises: string[] };
 
 const T: Record<string, DayTemplate> = {
-  FB_A: { name: '전신 A', exercises: ['squat', 'bench_press', 'barbell_row', 'lateral_raise', 'lying_leg_curl', 'triceps_pushdown'] },
+  FB_A: { name: '전신 A', exercises: ['squat', 'bench_press', 'barbell_row', 'lateral_raise', 'seated_leg_curl', 'triceps_pushdown'] },
   FB_B: { name: '전신 B', exercises: ['rdl', 'ohp', 'lat_pulldown', 'leg_extension', 'db_curl', 'standing_calf_raise'] },
   FB_C: { name: '전신 C', exercises: ['leg_press', 'incline_db_press', 'seated_cable_row', 'cable_lateral_raise', 'seated_leg_curl', 'cable_crunch'] },
   UPPER_A: { name: '상체 A', exercises: ['bench_press', 'barbell_row', 'ohp', 'lat_pulldown', 'lateral_raise', 'db_curl', 'triceps_pushdown'] },
-  LOWER_A: { name: '하체 A', exercises: ['squat', 'rdl', 'leg_extension', 'lying_leg_curl', 'standing_calf_raise', 'cable_crunch'] },
+  LOWER_A: { name: '하체 A', exercises: ['squat', 'rdl', 'leg_extension', 'seated_leg_curl', 'standing_calf_raise', 'cable_crunch'] },
   UPPER_B: { name: '상체 B', exercises: ['incline_db_press', 'chest_supported_row', 'pull_up', 'cable_lateral_raise', 'face_pull', 'incline_db_curl', 'overhead_triceps_ext'] },
   LOWER_B: { name: '하체 B', exercises: ['hack_squat', 'hip_thrust', 'bulgarian_split_squat', 'seated_leg_curl', 'seated_calf_raise', 'hanging_leg_raise'] },
   PUSH_A: { name: '밀기 A', exercises: ['bench_press', 'incline_db_press', 'ohp', 'lateral_raise', 'triceps_pushdown', 'overhead_triceps_ext'] },
   PULL_A: { name: '당기기 A', exercises: ['pull_up', 'barbell_row', 'seated_cable_row', 'face_pull', 'barbell_curl', 'hammer_curl'] },
-  LEGS_A: { name: '하체 A', exercises: ['squat', 'rdl', 'leg_press', 'lying_leg_curl', 'standing_calf_raise', 'cable_crunch'] },
+  LEGS_A: { name: '하체 A', exercises: ['squat', 'rdl', 'leg_press', 'seated_leg_curl', 'standing_calf_raise', 'cable_crunch'] },
   PUSH_B: { name: '밀기 B', exercises: ['incline_bench', 'machine_chest_press', 'db_shoulder_press', 'cable_lateral_raise', 'cable_fly', 'skull_crusher'] },
   PULL_B: { name: '당기기 B', exercises: ['lat_pulldown', 'chest_supported_row', 'db_row', 'rear_delt_fly', 'incline_db_curl', 'preacher_curl'] },
   LEGS_B: { name: '하체 B', exercises: ['hack_squat', 'hip_thrust', 'bulgarian_split_squat', 'seated_leg_curl', 'seated_calf_raise', 'hanging_leg_raise'] },
   BRO_CHEST: { name: '가슴', exercises: ['bench_press', 'incline_db_press', 'machine_chest_press', 'cable_fly', 'pec_deck'] },
   BRO_BACK: { name: '등', exercises: ['pull_up', 'barbell_row', 'lat_pulldown', 'seated_cable_row', 'straight_arm_pulldown'] },
   BRO_SHOULDER: { name: '어깨', exercises: ['ohp', 'lateral_raise', 'cable_lateral_raise', 'rear_delt_fly', 'face_pull', 'shrug'] },
-  BRO_LEGS: { name: '하체', exercises: ['squat', 'rdl', 'leg_press', 'leg_extension', 'lying_leg_curl', 'standing_calf_raise'] },
+  BRO_LEGS: { name: '하체', exercises: ['squat', 'rdl', 'leg_press', 'leg_extension', 'seated_leg_curl', 'standing_calf_raise'] },
   BRO_ARMS: { name: '팔', exercises: ['close_grip_bench', 'barbell_curl', 'triceps_pushdown', 'incline_db_curl', 'overhead_triceps_ext', 'hammer_curl'] },
 };
 
@@ -117,10 +118,14 @@ export function recommendSplit(daysPerWeek: number): SplitId {
 
 const HIGH_REP = new Set(['lateral_raise', 'cable_lateral_raise', 'rear_delt_fly', 'face_pull', 'standing_calf_raise', 'seated_calf_raise', 'cable_crunch', 'hanging_leg_raise', 'wrist_curl', 'shrug']);
 
+/**
+ * 근비대 중심 기본 반복 범위 (Schoenfeld 2021: 6~30회 모두 유효, 6~12회가 시간 대비 효율적).
+ * 바벨 복합은 6~10회, 머신·덤벨·스미스·맨몸 복합은 8~12회, 고립 10~15회, 소근육 12~20회.
+ */
 export function defaultRepRange(ex: Exercise): [number, number] {
-  if (ex.id === 'deadlift') return [5, 8];
+  if (ex.id === 'deadlift') return [6, 8];
   if (HIGH_REP.has(ex.id)) return [12, 20];
-  if (ex.compound) return [6, 10];
+  if (ex.compound) return ex.equipment === 'barbell' ? [6, 10] : [8, 12];
   return [10, 15];
 }
 
@@ -158,10 +163,14 @@ export interface GenerateInput {
   splitId?: SplitId;
   mesoWeeks?: number;
   now?: number;
+  /** 운동 가능 요일. 지정하면 요일 수가 주당 운동 일수가 된다 */
+  weekdays?: number[];
 }
 
 export function generateProgram(input: GenerateInput): Program {
-  const daysPerWeek = Math.max(2, Math.min(6, Math.round(input.daysPerWeek)));
+  const weekdays = input.weekdays ? sortWeekdays(input.weekdays).slice(0, 6) : undefined;
+  const requested = weekdays && weekdays.length > 0 ? weekdays.length : input.daysPerWeek;
+  const daysPerWeek = Math.max(2, Math.min(6, Math.round(requested)));
   const splitId = input.splitId ?? recommendSplit(daysPerWeek);
   const templates = templatesFor(splitId, daysPerWeek);
 
@@ -231,6 +240,7 @@ export function generateProgram(input: GenerateInput): Program {
     mesoStart: input.now ?? Date.now(),
     mesoWeeks: input.mesoWeeks ?? 4,
     priorities: input.priorities,
+    ...(weekdays && weekdays.length > 0 ? { weekdays } : {}),
   };
 }
 
