@@ -5,7 +5,7 @@ import { deloadAdvice, detectPlateau } from './analysis';
 import { epley, estimate1RM, roundToIncrement, weightForTarget } from './e1rm';
 import { effortFactor, hoursUntilRecovered, muscleRecovery, readinessScore, systemicLoad } from './fatigue';
 import { adjustSets, exerciseHistory, mesoPosition, suggestNext, targetRir, type ExerciseSession } from './progression';
-import { dayDurationMin, generateProgram, nextProgramDay, programWeeklyVolume, recommendSplit } from './splits';
+import { dayDurationMin, defaultRepRange, generateProgram, nextProgramDay, programWeeklyVolume, recommendSplit } from './splits';
 import { DAY_MS, emptyMuscleMap, isHardSet, muscleFrequency, muscleVolume, volumeStatus, WEEK_MS, weeklyVolume } from './volume';
 
 const H = 60 * 60 * 1000;
@@ -210,6 +210,12 @@ describe('progression: suggestNext', () => {
     expect(cites).toContain('singer2024');
   });
 
+  it('RIR 이 추정값이면 "실패에 너무 가까움 → 유지" 규칙을 적용하지 않음', () => {
+    const rows = session(9, T0, 'bench_press', [[100, 8, 0], [100, 8, 0]]).map((s) => ({ ...s, rirEstimated: true }));
+    const s = suggestNext({ ...base, targetRir: 3, history: [{ sessionId: 9, date: T0, sets: rows }] });
+    expect(s.action).toBe('add_reps');
+  });
+
   it('맨몸(증량 단위 0)은 하한 미달이어도 무게 유지', () => {
     const push = getExercise('push_up')!;
     const s = suggestNext({ ...base, exercise: push, history: [{ sessionId: 1, date: T0, sets: session(1, T0, 'push_up', [[0, 4, 0]]) }] });
@@ -303,7 +309,27 @@ describe('analysis', () => {
   });
 });
 
+describe('defaultRepRange — 근비대 중심 반복 범위 (Schoenfeld 2021)', () => {
+  it.each([
+    ['bench_press', [6, 10]], // 바벨 복합
+    ['deadlift', [6, 8]], // 고피로 복합도 6회 이상
+    ['machine_chest_press', [8, 12]], // 머신·덤벨 복합
+    ['db_bench', [8, 12]],
+    ['triceps_pushdown', [10, 15]], // 고립
+    ['lateral_raise', [12, 20]], // 소근육 고반복
+  ] as const)('%s → %j', (id, range) => {
+    expect(defaultRepRange(getExercise(id)!)).toEqual(range);
+  });
+});
+
 describe('splits', () => {
+  it('근비대 템플릿: 햄스트링은 시티드 레그 컬(신장 위치) 우선 (Maeo 2021)', () => {
+    const p = generateProgram({ daysPerWeek: 4, sessionMinutes: 90, priorities: [], now: T0, splitId: 'upper_lower' });
+    const ids = p.days.flatMap((d) => d.exercises.map((e) => e.exerciseId));
+    expect(ids).toContain('seated_leg_curl');
+    expect(ids).not.toContain('lying_leg_curl');
+  });
+
   it('운동 일수별 추천 분할', () => {
     expect(recommendSplit(2)).toBe('full_body');
     expect(recommendSplit(3)).toBe('full_body');

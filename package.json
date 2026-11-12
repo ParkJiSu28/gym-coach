@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
@@ -20,6 +21,7 @@
     "recharts": "2.15.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "@tailwindcss/vite": "4.1.8",
     "@types/react": "19.1.6",
     "@types/react-dom": "19.1.5",
