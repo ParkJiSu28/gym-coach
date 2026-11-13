@@ -1,6 +1,6 @@
 import SAMPLE from './__fixtures__/routine-sample.txt?raw';
 import { describe, expect, it } from 'vitest';
-import { auditRoutine, nextTarget, parseRoutineText, routineToProgram, workingSets } from './routineImport';
+import { AVOID_PRESETS, auditRoutine, nextTarget, parseRoutineText, routineToProgram, workingSets } from './routineImport';
 import { programWeeklyVolume } from './splits';
 
 const pairs = (sets: { weight: number; reps: number }[]) => sets.map((s) => `${s.weight}x${s.reps}`);
@@ -247,5 +247,83 @@ describe('근비대 반복 범위 점검', () => {
   it('5회 미만 세트도 알려줌', () => {
     const a = auditRoutine(parseRoutineText('스쿼트 140*3 4세트'));
     expect(a.notes.some((n) => n.text.includes('3회'))).toBe(true);
+  });
+});
+
+describe('수정안 하나씩 빼기 (rejected)', () => {
+  const days = parseRoutineText(SAMPLE);
+  const base = auditRoutine(days);
+  const entry = (a: ReturnType<typeof auditRoutine>, day: string, id: string) => a.revised.find((d) => d.name === day)!.entries.find((e) => e.exerciseId === id);
+
+  it('모든 수정안에 서로 다른 id', () => {
+    const ids = base.changes.map((c) => c.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+  it('뺀 교체 수정안은 적용되지 않음 (라잉 레그컬 유지)', () => {
+    const swap = base.changes.find((c) => c.kind === 'swap')!;
+    const a = auditRoutine(days, { rejected: [swap.id] });
+    expect(a.changes.find((c) => c.id === swap.id)).toBeUndefined();
+    expect(entry(a, swap.day, 'lying_leg_curl')).toBeDefined();
+  });
+  it('뺀 세트 수정안은 그 종목 세트를 건드리지 않음', () => {
+    const c = base.changes.find((x) => x.kind === 'sets' && x.exerciseId === 'pec_deck')!;
+    const a = auditRoutine(days, { rejected: [c.id] });
+    expect(workingSets(entry(a, c.day, 'pec_deck')!.sets)).toHaveLength(c.from!);
+  });
+  it('뺀 빼기 수정안은 종목이 남음', () => {
+    const c = base.changes.find((x) => x.kind === 'remove' && x.exerciseId === 'smith_bench')!;
+    const a = auditRoutine(days, { rejected: [c.id] });
+    expect(entry(a, '상체A', 'smith_bench')).toBeDefined();
+  });
+  it('시간 맞추기 수정안도 뺄 수 있음', () => {
+    const t = auditRoutine(days, { maxMinutes: 70 });
+    const c = t.changes.find((x) => x.text.includes('70분') && x.kind === 'sets')!;
+    const a = auditRoutine(days, { maxMinutes: 70, rejected: [c.id] });
+    expect(a.changes.find((x) => x.id === c.id)).toBeUndefined();
+  });
+});
+
+describe('집중 부위 (최대 5개)', () => {
+  const days = parseRoutineText(SAMPLE);
+  it('집중 부위는 MEV 가 아니라 MAV 하한+2 까지 올림 (측면 삼각근 → 14세트 이상)', () => {
+    const a = auditRoutine(days, { priorities: ['side_delts'] });
+    expect(a.after.side_delts).toBeGreaterThanOrEqual(14);
+    expect(a.changes.some((c) => c.text.includes('집중'))).toBe(true);
+  });
+  it('시간을 줄여도 집중 부위는 목표 세트 유지', () => {
+    const a = auditRoutine(days, { maxMinutes: 70, priorities: ['lats'] });
+    expect(a.after.lats).toBeGreaterThanOrEqual(14);
+  });
+  it('5개를 넘으면 앞의 5개만', () => {
+    const a = auditRoutine(days, { priorities: ['chest', 'lats', 'side_delts', 'biceps', 'triceps', 'calves'] });
+    expect(a.priorities).toEqual(['chest', 'lats', 'side_delts', 'biceps', 'triceps']);
+  });
+  it('routineToProgram 에 집중 부위 저장', () => {
+    expect(routineToProgram(days, 1000, ['chest']).priorities).toEqual(['chest']);
+  });
+});
+
+describe('빼고 싶은 종목 (예: 어깨 보호)', () => {
+  const days = parseRoutineText(SAMPLE);
+  const shoulder = AVOID_PRESETS.find((p) => p.id === 'shoulder')!;
+  const a = auditRoutine(days, { avoid: shoulder.ids });
+  it('어깨 보호면 어시스트 딥스가 루틴에서 사라짐', () => {
+    expect(a.revised.flatMap((d) => d.entries.map((e) => e.exerciseId))).not.toContain('assisted_dip');
+  });
+  it('같은 주동근의 다른 종목으로 바꾸고 근거(Kassiano 2022)를 붙임', () => {
+    const c = a.changes.find((x) => x.exerciseId === 'assisted_dip')!;
+    expect(c.kind).toBe('swap');
+    expect(shoulder.ids).not.toContain(c.toExerciseId);
+    expect(c.citations).toContain('kassiano2022');
+  });
+  it('추가·교체 종목에도 뺀 종목은 쓰지 않음', () => {
+    const b = auditRoutine(parseRoutineText('벤치프레스 60*8 3세트'), { avoid: ['lateral_raise', 'machine_chest_press'], priorities: ['side_delts'] });
+    const used = b.revised.flatMap((d) => d.entries.map((e) => e.exerciseId));
+    expect(used).not.toContain('lateral_raise');
+    expect(used).not.toContain('machine_chest_press');
+  });
+  it('직접 고른 종목 하나만 빼기', () => {
+    const b = auditRoutine(days, { avoid: ['pendulum_squat'] });
+    expect(b.revised.flatMap((d) => d.entries.map((e) => e.exerciseId))).not.toContain('pendulum_squat');
   });
 });
