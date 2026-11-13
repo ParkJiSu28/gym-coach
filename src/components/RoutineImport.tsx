@@ -29,10 +29,14 @@ export function RoutineImport({ onApplied }: { onApplied?: () => void }) {
   const [days, setDays] = useState<RoutineDay[] | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [dates, setDates] = useState<string[]>([]);
+  const [maxMin, setMaxMin] = useState('');
   const [recMsg, setRecMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const unmatched = days?.flatMap((d) => d.entries.filter((e) => !e.exerciseId)).length ?? 0;
-  const audit: RoutineAudit | null = useMemo(() => (days && days.length ? auditRoutine(days) : null), [days]);
+  const audit: RoutineAudit | null = useMemo(
+    () => (days && days.length ? auditRoutine(days, { maxMinutes: Number(maxMin) >= 15 ? Number(maxMin) : undefined }) : null),
+    [days, maxMin],
+  );
 
   function read() {
     const parsed = parseRoutineText(text);
@@ -76,6 +80,21 @@ export function RoutineImport({ onApplied }: { onApplied?: () => void }) {
         placeholder="상체A 루틴 (벤치프레스 50*8 5세트, 펙덱플라이 45*15,50*15,55*10 3세트, …) 하체A 루틴 (…)"
         className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-base outline-none focus:border-emerald-500"
       />
+      <label className="mt-2 flex items-center gap-2 text-sm text-slate-400">
+        한 번 운동 시간 제한
+        <input
+          type="number"
+          inputMode="numeric"
+          aria-label="운동 시간 제한(분)"
+          placeholder="없음"
+          min={15}
+          max={180}
+          value={maxMin}
+          onChange={(e) => setMaxMin(e.target.value)}
+          className="h-10 w-20 rounded-lg border border-slate-700 bg-slate-950 px-2 text-center"
+        />
+        분
+      </label>
       <Button className="mt-2 w-full" onClick={read} disabled={!text.trim()}>
         읽고 점검하기
       </Button>
@@ -123,7 +142,16 @@ export function RoutineImport({ onApplied }: { onApplied?: () => void }) {
           {audit && (
             <>
               <section>
-                <h3 className="mb-2 text-sm font-semibold">② 부위별 주간 세트 (워밍업 제외)</h3>
+                <h3 className="mb-2 text-sm font-semibold">② 예상 시간 · 부위별 주간 세트 (워밍업 제외)</h3>
+                <ul className="mb-2 grid grid-cols-2 gap-1 text-sm tabular-nums">
+                  {audit.durations.map((d) => (
+                    <li key={d.name} className="rounded-lg bg-slate-950/60 px-2 py-1">
+                      {d.name}{' '}
+                      <span className={Number(maxMin) >= 15 && d.before > Number(maxMin) ? 'text-rose-300' : ''}>{d.before}분</span>
+                      {d.after !== d.before && <span className="text-emerald-300"> → {d.after}분</span>}
+                    </li>
+                  ))}
+                </ul>
                 <table className="w-full text-sm tabular-nums">
                   <thead className="text-xs text-slate-500">
                     <tr>

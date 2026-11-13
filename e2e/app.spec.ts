@@ -350,6 +350,10 @@ test.describe('J7 메모 루틴 가져와서 점검', () => {
     // 다음 목표: 벤치 50kg × 9
     await expect(page.getByText('50kg × 9').first()).toBeVisible();
 
+    // 시간 제한: 30분으로 줄이면 "30분 맞추기" 수정안이 생김
+    await page.getByRole('spinbutton', { name: '운동 시간 제한(분)' }).fill('30');
+    await expect(page.getByText(/30분 맞추기/).first()).toBeVisible();
+
     // 기록으로도 저장 (기본 날짜: 최근 며칠)
     await page.getByRole('button', { name: '기록으로 저장' }).click();
     await expect(page.getByRole('status').filter({ hasText: /2일 · \d+세트를 기록으로 저장/ })).toBeVisible();
