@@ -203,3 +203,49 @@ describe('어시스트 머신은 보조 무게라 방향이 반대', () => {
     expect(nextTarget('assisted_pull_up', [{ weight: 20, reps: 12 }])).toMatchObject({ weight: 15, action: 'increase' });
   });
 });
+
+describe('운동 시간 제한 (예: 70분)', () => {
+  const days = parseRoutineText(SAMPLE);
+  const base = auditRoutine(days);
+  const fit = auditRoutine(days, { maxMinutes: 70 });
+
+  it('루틴별 예상 시간(전·후)을 알려줌', () => {
+    expect(base.durations.map((d) => d.name)).toEqual(['상체A', '하체A', '상체B', '하체B']);
+    expect(base.durations.some((d) => d.after > 70)).toBe(true);
+  });
+  it('70분 제한이면 모든 루틴이 70분 이하', () => {
+    expect(fit.durations.every((d) => d.after <= 70)).toBe(true);
+  });
+  it('줄여도 부위별 최소 유효량(MEV)은 지킴', async () => {
+    const { VOLUME_LANDMARKS } = await import('../domain/research');
+    for (const [m, v] of Object.entries(fit.after)) {
+      const l = VOLUME_LANDMARKS[m as keyof typeof VOLUME_LANDMARKS];
+      if (base.after[m as keyof typeof base.after] >= l.mev) expect(v).toBeGreaterThanOrEqual(l.mev);
+    }
+  });
+  it('시간 때문에 바꾼 항목은 이유에 "70분" 과 근거가 있음', () => {
+    const t = fit.changes.filter((c) => c.text.includes('70분'));
+    expect(t.length).toBeGreaterThan(0);
+    expect(t.every((c) => c.citations.length > 0)).toBe(true);
+  });
+  it('제한이 없으면 시간 때문에 줄이지 않음', () => {
+    expect(base.changes.some((c) => c.text.includes('분 맞추기'))).toBe(false);
+  });
+  it('도저히 안 되는 시간이면 MEV 는 지키고 알려줌', () => {
+    const a = auditRoutine(days, { maxMinutes: 15 });
+    expect(a.notes.some((n) => n.text.includes('15분 안에'))).toBe(true);
+  });
+});
+
+describe('근비대 반복 범위 점검', () => {
+  it('본세트가 20회를 넘는 종목은 무게를 올려 범위 안으로 (사용자 루틴: 사이드 레터럴 25회, 카프 30회)', () => {
+    const a = auditRoutine(parseRoutineText(SAMPLE));
+    const reps = a.notes.filter((n) => n.citations.includes('schoenfeld2021continuum'));
+    expect(reps.some((n) => n.text.includes('사이드 레터럴'))).toBe(true);
+    expect(reps.some((n) => n.text.includes('카프'))).toBe(true);
+  });
+  it('5회 미만 세트도 알려줌', () => {
+    const a = auditRoutine(parseRoutineText('스쿼트 140*3 4세트'));
+    expect(a.notes.some((n) => n.text.includes('3회'))).toBe(true);
+  });
+});
