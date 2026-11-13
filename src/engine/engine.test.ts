@@ -385,3 +385,19 @@ describe('suggestNext — 가져온 루틴의 시작 무게', () => {
     expect(s.reasons[0]!.text).toContain('가져온 루틴');
   });
 });
+
+describe('planDay — Claude 로 만든(가져온) 루틴은 세트 수를 그대로', () => {
+  it('회복이 덜 됐어도 세트를 깎지 않고 이유만 알려줌', async () => {
+    const { buildContext, planDay } = await import('./planner');
+    const NOW = new Date(2026, 10, 13, 20).getTime();
+    const heavy = Array.from({ length: 30 }, (_, i) => ({ sessionId: 1, exerciseId: 'bench_press', order: i, weight: 60, reps: 8, rir: 1, completedAt: NOW - 20 * 3600_000 + i * 60_000 }));
+    const program = {
+      name: 'c', splitId: 'upper_lower' as const, createdAt: NOW, active: true, mesoStart: NOW, mesoWeeks: 4, priorities: [], source: 'imported' as const,
+      days: [{ id: 'a', name: '상체A', exercises: [{ exerciseId: 'bench_press', sets: 4, repMin: 6, repMax: 10, restSec: 150 }] }],
+    };
+    const ctx = buildContext({ now: NOW, sets: heavy, checkins: [], program });
+    const [p] = planDay(ctx, program.days[0]!);
+    expect(p!.suggestion.sets).toBe(4);
+    expect(p!.reasons.some((r) => r.text.includes('회복'))).toBe(true);
+  });
+});
