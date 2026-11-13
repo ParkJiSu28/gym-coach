@@ -113,3 +113,33 @@ describe('planToProgram', () => {
     expect(p.days[1]!.exercises[1]!.restSec).toBeGreaterThan(0);
   });
 });
+
+describe('parseRoutinePlan — Claude 가 자주 쓰는 다른 표기', () => {
+  const text = [
+    '### 상체A',
+    '- 바벨 벤치프레스 4×6-10 (52.5kg, 휴식 2.5분)',
+    '- 랫풀다운: 3 x 8~12회 @ 50kg',
+    '- 덤벨 컬 — 10-12회 × 3세트',
+    '| 종목 | 세트×반복 | 무게 |',
+    '|---|---|---|',
+    '| 시티드 케이블 로우 | 3×10-12 | 55kg |',
+    '- 페이스풀 3세트 15회',
+    '- 이건 읽을 수 없는 줄 6~8',
+  ].join('\n');
+  const plan = parseRoutinePlan(text);
+  const items = plan.days[0]!.items;
+  it('N×a-b, N x a~b, a-b회 × N세트, 표 칸 "3×10-12"', () => {
+    expect(items.map((i) => [i.exerciseId, i.sets, i.repMin, i.repMax])).toEqual([
+      ['bench_press', 4, 6, 10],
+      ['lat_pulldown', 3, 8, 12],
+      ['db_curl', 3, 10, 12],
+      ['seated_cable_row', 3, 10, 12],
+      ['face_pull', 3, 15, 15],
+    ]);
+    expect(items[0]).toMatchObject({ weight: 52.5, restSec: 150 });
+    expect(items[1]).toMatchObject({ weight: 50 });
+  });
+  it('종목처럼 보이지만 못 읽은 줄은 skipped 로 알려줌', () => {
+    expect(plan.skipped).toEqual(['- 이건 읽을 수 없는 줄 6~8']);
+  });
+});
