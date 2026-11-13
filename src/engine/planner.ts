@@ -96,6 +96,8 @@ export function planExercise(ctx: PlanContext, exerciseId: string, pe?: ProgramE
     targetRir: rir,
     plannedSets: adj.sets,
     deload: ctx.deload,
+    startWeight: pe?.targetWeight,
+    startReps: pe?.targetReps,
   });
 
   const rirReason: Reason[] = ctx.meso && !ctx.deload

@@ -189,7 +189,14 @@ function DayList({ program, editable = false, onChange }: { program: Program; ed
           <ul className="space-y-1.5 text-sm">
             {d.exercises.map((pe, ei) => (
               <li key={`${pe.exerciseId}-${ei}`} className="flex items-center justify-between gap-2">
-                <span className="flex-1">{getExercise(pe.exerciseId)?.name ?? pe.exerciseId}</span>
+                <span className="flex-1">
+                  {getExercise(pe.exerciseId)?.name ?? pe.exerciseId}
+                  {pe.targetWeight !== undefined && (
+                    <span className="block text-xs text-emerald-300 tabular-nums">
+                      목표 {pe.targetWeight}kg × {pe.targetReps}회
+                    </span>
+                  )}
+                </span>
                 {editable ? (
                   <span className="flex items-center gap-1 tabular-nums">
                     <button type="button" aria-label="세트 감소" className="h-7 w-7 rounded bg-slate-800" onClick={() => update((p) => void (p.days[di]!.exercises[ei]!.sets = Math.max(1, pe.sets - 1)))}>

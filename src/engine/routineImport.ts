@@ -109,17 +109,21 @@ export interface NextTarget {
 export function nextTarget(exerciseId: string, sets: RoutineSet[]): NextTarget {
   const ex = getExercise(exerciseId);
   const [repMin, repMax] = ex ? defaultRepRange(ex) : [8, 12];
-  const inc = ex?.increment || 2.5;
+  // 어시스트 머신은 무게가 '보조'라 클수록 쉽다 → 증감 방향을 뒤집는다
+  const inc = (ex?.increment || 2.5) * (exerciseId.startsWith('assisted_') ? -1 : 1);
   const work = workingSets(sets);
   const top = Math.max(...work.map((s) => s.weight));
   const minReps = Math.min(...work.filter((s) => s.weight === top).map((s) => s.reps));
   const base = { exerciseId, repMin, repMax };
   if (minReps >= repMax) {
-    return { ...base, weight: top + inc, reps: repMin, action: 'increase', text: `모든 세트 ${repMax}회 달성 → ${top + inc}kg × ${repMin}회부터` };
+    const w = Math.max(0, top + inc);
+    const how = inc < 0 ? `보조 ${w}kg 로 줄여` : `${w}kg ×`;
+    return { ...base, weight: w, reps: repMin, action: 'increase', text: `모든 세트 ${repMax}회 달성 → ${how} ${repMin}회부터` };
   }
   if (minReps < repMin) {
     const w = Math.max(0, top - inc);
-    return { ...base, weight: w, reps: repMin, action: 'decrease', text: `${repMin}회 미만 → ${w}kg 로 낮춰 ${repMin}~${repMax}회` };
+    const how = inc < 0 ? `보조 ${w}kg 로 올려` : `${w}kg 로 낮춰`;
+    return { ...base, weight: w, reps: repMin, action: 'decrease', text: `${repMin}회 미만 → ${how} ${repMin}~${repMax}회` };
   }
   return { ...base, weight: top, reps: minReps + 1, action: 'reps', text: `${top}kg 유지, 가장 적었던 세트를 ${minReps + 1}회로` };
 }
@@ -148,7 +152,10 @@ export function routineToProgram(days: RoutineDay[], now = Date.now()): Program 
         .map((e) => {
           const ex = getExercise(e.exerciseId!)!;
           const [repMin, repMax] = defaultRepRange(ex);
-          return { exerciseId: ex.id, sets: workingSets(e.sets).length, repMin, repMax, restSec: recommendedRest(ex) };
+          const base = { exerciseId: ex.id, sets: workingSets(e.sets).length, repMin, repMax, restSec: recommendedRest(ex) };
+          if (e.added || !e.sets.some((s) => s.weight > 0)) return base;
+          const t = nextTarget(ex.id, e.sets);
+          return { ...base, targetWeight: t.weight, targetReps: t.reps };
         }),
     })),
   };
@@ -157,8 +164,10 @@ export function routineToProgram(days: RoutineDay[], now = Date.now()): Program 
 // ─────────────────────────────── 점검·수정안
 
 export interface RoutineChange {
-  kind: 'remove' | 'sets' | 'add' | 'swap';
+  kind: 'remove' | 'sets' | 'add' | 'swap' | 'move';
   day: string;
+  /** move: 옮겨 갈 루틴 */
+  toDay?: string;
   exerciseId: string;
   toExerciseId?: string;
   from?: number;
@@ -315,6 +324,48 @@ export function auditRoutine(days: RoutineDay[]): RoutineAudit {
   }
   for (const [e, c] of raised) {
     changes.push({ kind: 'sets', day: c.day, exerciseId: e.exerciseId!, from: c.from, to: nWork(e), text: setText(e, c.from, (x) => before[x] < VOLUME_LANDMARKS[x].mev, (x) => `MEV ${VOLUME_LANDMARKS[x].mev} 미만`), citations: VOL_CITES });
+  }
+
+  // 5) 같은 부위 날(하체A·하체B 등) 사이에 한 부위 직접 세트가 4세트 이상 차이 나면 종목을 옮겨 고르게
+  const region = (n: string) => n.replace(/\s*[A-Za-z0-9]$/, '');
+  const direct = (d: RoutineDay, m: Muscle) => d.entries.filter((e) => hits(e, m)).reduce((s, e) => s + nWork(e), 0);
+  const regions = new Map<string, RoutineDay[]>();
+  for (const d of revised) regions.set(region(d.name), [...(regions.get(region(d.name)) ?? []), d]);
+  for (const group of regions.values()) {
+    if (group.length < 2) continue;
+    const tried = new Set<string>();
+    for (let guard = 0; guard < 12; guard++) {
+      let best: { m: Muscle; h: RoutineDay; l: RoutineDay; diff: number } | null = null;
+      for (const m of MUSCLES) {
+        if (tried.has(m)) continue;
+        const sorted = [...group].sort((a, b) => direct(b, m) - direct(a, m));
+        const diff = direct(sorted[0]!, m) - direct(sorted.at(-1)!, m);
+        if (diff >= 4 && (!best || diff > best.diff)) best = { m, h: sorted[0]!, l: sorted.at(-1)!, diff };
+      }
+      if (!best) break;
+      const { m, h, l, diff } = best;
+      const cands = h.entries
+        .filter((e) => known(e) && primaryKey(e.exerciseId!) === m && !l.entries.some((x) => x.exerciseId === e.exerciseId))
+        .map((e) => ({ e, gap: Math.abs(diff - 2 * nWork(e)), iso: !getExercise(e.exerciseId!)!.compound }))
+        .filter((c) => c.gap < diff)
+        .sort((a, b) => Number(b.iso) - Number(a.iso) || a.gap - b.gap);
+      const pick = cands[0];
+      if (!pick) {
+        tried.add(m);
+        continue;
+      }
+      const [a, b] = [direct(h, m), direct(l, m)];
+      h.entries = h.entries.filter((e) => e !== pick.e);
+      l.entries.push(pick.e);
+      changes.push({
+        kind: 'move',
+        day: h.name,
+        toDay: l.name,
+        exerciseId: pick.e.exerciseId!,
+        text: `${MUSCLE_LABEL[m]} 직접 세트가 ${h.name} ${a}세트 / ${l.name} ${b}세트로 한쪽에 몰림 — ${exName(pick.e.exerciseId!)}를 ${l.name}로 옮겨 ${direct(h, m)} / ${direct(l, m)}세트로 고르게 (주 2회 고른 자극)`,
+        citations: ['schoenfeld2016freq', 'israetel_landmarks'],
+      });
+    }
   }
 
   // 참고 사항: 세션당 부위 직접 세트 과다, 주 1회만 자극하는 부위

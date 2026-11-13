@@ -116,12 +116,12 @@ export function StatsPage() {
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={series} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-                <CartesianGrid stroke="#1e293b" />
+                <CartesianGrid stroke="#e2e8f0" />
                 <XAxis dataKey="date" stroke="#64748b" fontSize={11} />
                 <YAxis stroke="#64748b" fontSize={11} domain={['dataMin - 5', 'dataMax + 5']} />
-                <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8 }} />
-                <Line type="monotone" dataKey="e1rm" name="추정 1RM" stroke="#34d399" strokeWidth={2} dot={{ r: 3 }} />
-                <Line type="monotone" dataKey="top" name="최고 무게" stroke="#38bdf8" strokeWidth={1.5} strokeDasharray="4 3" dot={false} />
+                <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 8 }} />
+                <Line type="monotone" dataKey="e1rm" name="추정 1RM" stroke="#059669" strokeWidth={2} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="top" name="최고 무게" stroke="#0284c7" strokeWidth={1.5} strokeDasharray="4 3" dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>

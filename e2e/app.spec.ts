@@ -350,9 +350,15 @@ test.describe('J7 메모 루틴 가져와서 점검', () => {
     // 다음 목표: 벤치 50kg × 9
     await expect(page.getByText('50kg × 9').first()).toBeVisible();
 
+    // 기록으로도 저장 (기본 날짜: 최근 며칠)
+    await page.getByRole('button', { name: '기록으로 저장' }).click();
+    await expect(page.getByRole('status').filter({ hasText: /2일 · \d+세트를 기록으로 저장/ })).toBeVisible();
+
     await page.getByRole('button', { name: '수정안 적용' }).click();
     await expect(page.getByRole('status').filter({ hasText: '수정안을 내 루틴으로 저장' })).toBeVisible();
     await expect(page.getByRole('button', { name: '새 루틴 만들기' })).toBeVisible();
+    // 루틴 구성에 목표 무게가 보임
+    await expect(page.getByText(/목표 50kg × 9회/).first()).toBeVisible();
     await nav(page, '오늘');
     await expect(page.getByText(/상체A|하체A/).first()).toBeVisible();
   });

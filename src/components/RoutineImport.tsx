@@ -1,12 +1,25 @@
 import { useMemo, useState } from 'react';
-import { saveActiveProgram } from '../data/db';
+import { saveActiveProgram, saveRoutineRecords } from '../data/db';
+import { ManualRecordError } from '../engine/records';
 import { allExercises, getExercise } from '../domain/exercises';
 import { VOLUME_LANDMARKS } from '../domain/research';
 import { MUSCLES, MUSCLE_LABEL } from '../domain/types';
 import { auditRoutine, parseRoutineText, routineToProgram, workingSets, type RoutineAudit, type RoutineDay } from '../engine/routineImport';
 import { Badge, Button, Card, CitationChip } from './ui';
 
-const KIND_LABEL = { remove: '빼기', sets: '세트', add: '추가', swap: '교체' } as const;
+const KIND_LABEL = { remove: '빼기', sets: '세트', add: '추가', swap: '교체', move: '옮기기' } as const;
+
+function dateStr(ts: number): string {
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+function parseDate(s: string): number | null {
+  const [y, m, d] = s.split('-').map(Number);
+  return y && m && d ? new Date(y, m - 1, d).getTime() : null;
+}
+/** 기본 날짜: 루틴 순서대로 최근 며칠 (마지막 루틴 = 어제) */
+const defaultDates = (n: number) => Array.from({ length: n }, (_, i) => dateStr(Date.now() - (n - i) * 86_400_000));
 const exName = (id: string | null) => (id ? (getExercise(id)?.name ?? id) : '');
 
 /** 메모에 적어 둔 루틴 글 → 인식 확인 → 논문 기준 점검 → 수정안(또는 원래대로) 적용 */
@@ -15,6 +28,8 @@ export function RoutineImport({ onApplied }: { onApplied?: () => void }) {
   const [text, setText] = useState('');
   const [days, setDays] = useState<RoutineDay[] | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [dates, setDates] = useState<string[]>([]);
+  const [recMsg, setRecMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const unmatched = days?.flatMap((d) => d.entries.filter((e) => !e.exerciseId)).length ?? 0;
   const audit: RoutineAudit | null = useMemo(() => (days && days.length ? auditRoutine(days) : null), [days]);
@@ -23,6 +38,18 @@ export function RoutineImport({ onApplied }: { onApplied?: () => void }) {
     const parsed = parseRoutineText(text);
     setMsg(parsed.length ? null : { ok: false, text: '종목과 "무게*횟수"를 찾지 못했습니다. 예) 벤치프레스 60*10 3세트' });
     setDays(parsed.length ? parsed : null);
+    setDates(defaultDates(parsed.length));
+    setRecMsg(null);
+  }
+
+  async function saveRecords() {
+    if (!days) return;
+    try {
+      const r = await saveRoutineRecords(days, dates.map((s) => (s ? parseDate(s) : null)));
+      setRecMsg({ ok: true, text: `${r.sessions}일 · ${r.sets}세트를 기록으로 저장했습니다. (워밍업 제외, RIR 모름)` });
+    } catch (err) {
+      setRecMsg({ ok: false, text: err instanceof ManualRecordError ? err.message : '기록 저장에 실패했습니다.' });
+    }
   }
 
   function setExercise(di: number, ei: number, id: string) {
@@ -136,6 +163,7 @@ export function RoutineImport({ onApplied }: { onApplied?: () => void }) {
                         <span className="font-medium">
                           {exName(c.exerciseId)}
                           {c.toExerciseId && ` → ${exName(c.toExerciseId)}`}
+                          {c.toDay && ` → ${c.toDay}`}
                           {c.kind === 'sets' && ` ${c.from}→${c.to}세트`}
                         </span>
                       </p>
@@ -178,6 +206,35 @@ export function RoutineImport({ onApplied }: { onApplied?: () => void }) {
                   <CitationChip id="plotkin2022" />
                   <CitationChip id="schoenfeld2021continuum" />
                 </div>
+              </section>
+
+              <section className="rounded-xl bg-slate-950/60 p-3">
+                <h3 className="mb-1 text-sm font-semibold">⑤ 운동 기록으로도 저장</h3>
+                <p className="mb-2 text-xs text-slate-400">루틴마다 실제로 한 날짜를 고르세요. 본세트만 저장되어 피로도·분석·다음 처방에 반영됩니다. 날짜를 비우면 그 루틴은 건너뜁니다.</p>
+                <div className="space-y-2">
+                  {days.map((d, i) => (
+                    <label key={d.name + i} className="flex items-center gap-2 text-sm">
+                      <span className="w-16 shrink-0">{d.name}</span>
+                      <input
+                        type="date"
+                        aria-label={`${d.name} 날짜`}
+                        value={dates[i] ?? ''}
+                        max={dateStr(Date.now())}
+                        onChange={(e) => setDates((ds) => ds.map((x, j) => (j === i ? e.target.value : x)))}
+                        className="h-10 min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-2"
+                      />
+                    </label>
+                  ))}
+                </div>
+                <Button variant="ghost" className="mt-2 w-full" onClick={saveRecords}>
+                  기록으로 저장
+                </Button>
+                {recMsg && (
+                  <p role={recMsg.ok ? 'status' : 'alert'} className={`mt-2 text-sm ${recMsg.ok ? 'text-emerald-300' : 'text-rose-300'}`}>
+                    {recMsg.ok ? '✓ ' : ''}
+                    {recMsg.text}
+                  </p>
+                )}
               </section>
 
               <div className="flex gap-2">

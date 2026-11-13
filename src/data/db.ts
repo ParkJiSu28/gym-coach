@@ -1,5 +1,6 @@
 import Dexie, { type Table } from 'dexie';
-import { registerCustomExercises } from '../domain/exercises';
+import { getExercise, registerCustomExercises } from '../domain/exercises';
+import { workingSets, type RoutineDay } from '../engine/routineImport';
 import type { Checkin, Exercise, Program, SetLog, WorkoutSession } from '../domain/types';
 import {
   DEFAULT_UNKNOWN_RIR,
@@ -153,6 +154,31 @@ export async function swapExercise(sessionId: number, from: string, to: string, 
 }
 
 // ─────────────────────────────── 프로그램
+
+/**
+ * 분석한 루틴을 운동 기록으로 저장: 루틴마다 고른 날짜에 본세트(워밍업 제외)만, RIR 은 모름(추정).
+ * 날짜가 null 인 루틴과 앱에 없는 종목은 건너뛴다. 하나라도 잘못되면 아무것도 저장하지 않는다.
+ */
+export async function saveRoutineRecords(
+  days: RoutineDay[],
+  dates: (number | null)[],
+  now = Date.now(),
+  database: GymDB = db,
+): Promise<{ sessions: number; sets: number }> {
+  const jobs: { day: number; entry: ManualEntry }[] = [];
+  days.forEach((d, i) => {
+    const date = dates[i];
+    if (date === null || date === undefined) return;
+    for (const e of d.entries) {
+      if (!e.exerciseId || !getExercise(e.exerciseId) || e.added) continue;
+      const work = workingSets(e.sets).filter((s) => s.weight > 0 || getExercise(e.exerciseId!)!.equipment === 'bodyweight');
+      if (work.length) jobs.push({ day: i, entry: { date, exerciseId: e.exerciseId, sets: work.map((s) => ({ weight: s.weight, reps: s.reps })) } });
+    }
+  });
+  for (const j of jobs) validateManualEntry(j.entry, now);
+  for (const j of jobs) await addManualEntry(j.entry, now, database);
+  return { sessions: new Set(jobs.map((j) => j.day)).size, sets: jobs.reduce((a, j) => a + j.entry.sets.length, 0) };
+}
 
 export async function saveActiveProgram(p: Program, database: GymDB = db): Promise<number> {
   return database.transaction('rw', database.programs, async () => {

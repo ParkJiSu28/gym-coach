@@ -90,6 +90,9 @@ export interface SuggestInput {
   targetRir: number;
   plannedSets: number;
   deload?: boolean;
+  /** 기록이 없을 때 쓸 시작 무게·반복 (가져온 루틴의 다음 목표) */
+  startWeight?: number;
+  startReps?: number;
 }
 
 export interface Suggestion {
@@ -114,6 +117,19 @@ export function suggestNext(input: SuggestInput): Suggestion {
   const restSec = recommendedRest(exercise);
   const reasons: Reason[] = [];
   const last = history.at(-1);
+
+  if ((!last || last.sets.length === 0) && input.startWeight !== undefined) {
+    return {
+      action: 'start',
+      weight: input.startWeight,
+      repsTarget: input.startReps ?? repMax,
+      rir: 2,
+      sets: plannedSets,
+      restSec,
+      performanceDrop: false,
+      reasons: [{ text: `가져온 루틴 기준 다음 목표입니다. ${input.startWeight}kg × ${input.startReps ?? repMax}회 (반복 범위 ${repMin}~${repMax}회).`, citations: ['plotkin2022'] }],
+    };
+  }
 
   if (!last || last.sets.length === 0) {
     return {

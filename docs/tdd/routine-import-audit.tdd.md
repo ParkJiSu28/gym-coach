@@ -20,3 +20,22 @@
 | 8 | 붙여넣기 → 수정안·근거·목표 표시 → 적용 → 오늘 탭 반영 | e2e J7 |
 
 알려진 한계: 랜드마크(MEV/MRV)는 전문가 의견(Israetel) 기반 추정치. 내전근은 별도 부위가 없어 둔근 0.5 로 계산. 가져온 루틴은 날짜가 없어 기록으로 저장하지 않음.
+
+## 2차: 목표 무게 · 기록 저장 · 같은 부위 날 배분 · 밝은 화면
+
+요청: "루틴분석하면 기록으로 저장하기도 기능이 필요하고 … 하체가 2번인데 너무 1번에 쏠려있다 이러면 … 배분 … 화면은 좀 밝게"
+
+| 단계 | 커밋 | 결과 |
+|---|---|---|
+| RED | e19b109 | 9 실패 (saveRoutineRecords 없음, startWeight 무시, targetWeight 없음, move 없음) |
+| RED | (작업 중) | 어시스트 머신 방향 2 실패 |
+| GREEN | (이 커밋) | vitest 237/237, playwright 20/20 |
+
+| 보장 | 테스트 |
+|---|---|
+| Program 에 targetWeight/targetReps, 추가 종목은 없음 | routineImport.test.ts |
+| 기록이 없으면 targetWeight 로 첫 처방 | engine.test.ts suggestNext |
+| 같은 부위 날 사이 4세트 이상 쏠림 → 종목 옮기기(근거 포함), 상체↔하체는 안 옮김 | routineImport.test.ts |
+| 루틴 → 날짜별 기록 (본세트만, RIR 추정, 미래 날짜 거부, 빈 날짜 건너뜀) | data/routineRecords.test.ts |
+| 어시스트 머신 증감 방향 반대 | routineImport.test.ts |
+| 기록 저장·목표 무게 표시 E2E | e2e J7 |

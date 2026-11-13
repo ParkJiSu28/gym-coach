@@ -194,3 +194,12 @@ describe('같은 부위 날(하체A·하체B) 사이 고르게 배분', () => {
     expect(a.changes.some((c) => c.kind === 'move' && c.day.startsWith('하체') && c.toDay!.startsWith('하체'))).toBe(true);
   });
 });
+
+describe('어시스트 머신은 보조 무게라 방향이 반대', () => {
+  it('하한 미달 → 보조 무게를 올림', () => {
+    expect(nextTarget('assisted_dip', [{ weight: 30, reps: 7 }])).toMatchObject({ weight: 35, action: 'decrease' });
+  });
+  it('상한 도달 → 보조 무게를 내림', () => {
+    expect(nextTarget('assisted_pull_up', [{ weight: 20, reps: 12 }])).toMatchObject({ weight: 15, action: 'increase' });
+  });
+});

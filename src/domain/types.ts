@@ -101,6 +101,9 @@ export interface ProgramExercise {
   repMin: number;
   repMax: number;
   restSec: number;
+  /** 가져온 루틴에서 계산한 다음 목표 (기록이 없을 때 첫 처방에 사용) */
+  targetWeight?: number;
+  targetReps?: number;
 }
 
 export interface ProgramDay {
