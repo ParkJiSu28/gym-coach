@@ -8,6 +8,7 @@ import { VOLUME_LANDMARKS } from '../domain/research';
 import { MUSCLES, MUSCLE_LABEL } from '../domain/types';
 import { PLATEAU_TIPS, detectPlateau } from '../engine/analysis';
 import { buildReport, type Report } from '../engine/report';
+import { exerciseProgress, weeklySummary } from '../engine/stats';
 import { exerciseHistory, sessionBestE1RM } from '../engine/progression';
 import { VOLUME_STATUS_LABEL, WEEK_MS, muscleFrequency, volumeStatus, weeklyVolume } from '../engine/volume';
 
@@ -59,6 +60,8 @@ export function StatsPage() {
       <h1 className="text-2xl font-bold">분석</h1>
 
       <ReportCard report={report} />
+      <WeeklyCard sets={sets} now={now} />
+      <ProgressCard sets={sets} now={now} />
 
       <Card title="최근 7일 부위별 볼륨">
         <p className="mb-3 flex flex-wrap items-center gap-1 text-xs text-slate-400">
@@ -270,6 +273,100 @@ function BackupCard() {
       </div>
       <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
       {msg && <p className={`mt-2 text-sm ${msg.ok ? 'text-emerald-300' : 'text-rose-300'}`}>{msg.text}</p>}
+    </Card>
+  );
+}
+
+// ─────────────────────────────── 주간 요약 · 부위별 추이
+
+const shortDate = (ts: number) => new Date(ts).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
+
+function WeeklyCard({ sets, now }: { sets: Parameters<typeof weeklySummary>[0]; now: number }) {
+  const weeks = useMemo(() => weeklySummary(sets, now, 8), [sets, now]);
+  if (weeks.every((w) => w.sets === 0)) return null;
+  const maxT = Math.max(1, ...weeks.map((w) => w.tonnage));
+  const shown = MUSCLES.filter((m) => weeks.some((w) => w.muscles[m] > 0));
+  const tone = (m: (typeof MUSCLES)[number], v: number) => {
+    const l = VOLUME_LANDMARKS[m];
+    if (v === 0) return 'text-slate-600';
+    if (v > l.mrv) return 'text-rose-300 font-semibold';
+    if (v < l.mev) return 'text-amber-300';
+    return 'text-emerald-300';
+  };
+  return (
+    <Card title="최근 8주 주간 요약">
+      <ul className="space-y-1 text-sm tabular-nums">
+        {weeks.map((w) => (
+          <li key={w.start} className="grid grid-cols-[4.5rem_1fr_auto] items-center gap-2">
+            <span className="text-xs text-slate-500">{shortDate(w.start + 86_400_000)}~</span>
+            <span className="h-2 rounded bg-emerald-500/70" style={{ width: `${(w.tonnage / maxT) * 100}%`, minWidth: w.tonnage ? 4 : 0 }} />
+            <span className="text-xs text-slate-400">
+              {w.sessions}회 · {w.sets}세트 · {w.tonnage.toLocaleString()}kg
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 mb-1 text-sm font-semibold">부위별 주간 세트 추이</p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs tabular-nums">
+          <thead className="text-slate-500">
+            <tr>
+              <th className="text-left font-normal">부위</th>
+              {weeks.map((w, i) => (
+                <th key={w.start} className="font-normal">
+                  {i === weeks.length - 1 ? '이번' : `-${weeks.length - 1 - i}`}
+                </th>
+              ))}
+              <th className="font-normal">권장</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((m) => (
+              <tr key={m} className="border-t border-slate-800">
+                <td className="py-1 pr-1 whitespace-nowrap">{MUSCLE_LABEL[m]}</td>
+                {weeks.map((w) => (
+                  <td key={w.start} className={`text-center ${tone(m, w.muscles[m])}`}>
+                    {w.muscles[m] ? Math.round(w.muscles[m] * 2) / 2 : '·'}
+                  </td>
+                ))}
+                <td className="text-center text-slate-500">
+                  {VOLUME_LANDMARKS[m].mev}~{VOLUME_LANDMARKS[m].mrv}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-1 text-xs text-slate-500">노랑 = 최소 유효량 미만, 초록 = 권장 범위, 빨강 = 회복 한계 초과 (주 단위, 보조 근육 0.5세트)</p>
+      <div className="mt-1 flex flex-wrap gap-1">
+        <CitationChip id="schoenfeld2017volume" />
+        <CitationChip id="israetel_landmarks" />
+      </div>
+    </Card>
+  );
+}
+
+function ProgressCard({ sets, now }: { sets: Parameters<typeof exerciseProgress>[0]; now: number }) {
+  const rows = useMemo(() => exerciseProgress(sets, now), [sets, now]);
+  if (rows.length === 0) return null;
+  return (
+    <Card title="종목별 성장">
+      <ul className="space-y-1.5 text-sm tabular-nums">
+        {rows.map((r) => (
+          <li key={r.exerciseId} className="flex items-center justify-between gap-2 rounded-lg bg-slate-950/60 px-3 py-1.5">
+            <span className="min-w-0">
+              <span className="font-medium">{r.name}</span>
+              <span className="block text-xs text-slate-400">
+                {r.first.weight}×{r.first.reps} → {r.last.weight}×{r.last.reps} · {r.sessions}회 · 마지막 {shortDate(r.last.at)}
+              </span>
+            </span>
+            <Badge tone={r.sessions < 2 ? 'slate' : r.changePct > 0 ? 'emerald' : r.changePct < 0 ? 'rose' : 'amber'}>
+              {r.sessions < 2 ? '첫 기록' : `${r.changePct > 0 ? '+' : ''}${r.changePct}%`}
+            </Badge>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-1 text-xs text-slate-500">세션별 최고 세트의 추정 1RM(Epley)으로 첫 기록과 최근 기록을 비교합니다.</p>
     </Card>
   );
 }

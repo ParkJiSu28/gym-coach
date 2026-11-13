@@ -139,6 +139,7 @@ function guessSplit(days: RoutineDay[]): SplitId {
 export function routineToProgram(days: RoutineDay[], now = Date.now(), priorities: Muscle[] = []): Program {
   return {
     name: '내 루틴 (가져옴)',
+    source: 'imported',
     splitId: guessSplit(days),
     createdAt: now,
     active: true,

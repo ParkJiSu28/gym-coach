@@ -75,7 +75,7 @@ export function planExercise(ctx: PlanContext, exerciseId: string, pe?: ProgramE
   const rir = ctx.meso ? targetRir(ctx.meso, exercise.compound) : 2;
 
   const history = exerciseHistory(ctx.sets, exerciseId);
-  const adj = ctx.deload
+  const raw = ctx.deload
     ? { sets: planned, reasons: [] as Reason[] }
     : adjustSets({
         exercise,
@@ -87,6 +87,15 @@ export function planExercise(ctx: PlanContext, exerciseId: string, pe?: ProgramE
         hasHistory: history.length > 0,
         mesoWeek: ctx.meso?.week ?? null,
       });
+
+  // 가져온(Claude) 루틴은 사용자가 정한 세트 수를 그대로 두고, 줄일 이유는 참고로만 보여준다
+  const imported = ctx.program?.source === 'imported' && !ctx.deload;
+  const adj = imported
+    ? {
+        sets: planned,
+        reasons: raw.sets < planned ? raw.reasons.map((r) => ({ ...r, text: `참고: ${r.text.replace(/\s*\d*세트 줄입니다\.?/, '')} — 가져온 루틴이라 세트는 그대로, 힘들면 직접 줄이세요.` })) : [],
+      }
+    : raw;
 
   const suggestion = suggestNext({
     exercise,

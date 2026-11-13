@@ -127,6 +127,8 @@ export interface Program {
   priorities: Muscle[];
   /** 운동 가능 요일 (0=일 … 6=토, 월요일부터 정렬). 없으면 순환 방식 */
   weekdays?: number[];
+  /** imported = Claude 등에서 가져온 루틴 (세트 수를 자동으로 줄이지 않음) */
+  source?: 'generated' | 'imported';
 }
 
 export type EvidenceLevel = 'meta-analysis' | 'rct' | 'consensus' | 'expert-opinion' | 'model';

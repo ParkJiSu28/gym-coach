@@ -4,6 +4,7 @@ import { db, saveActiveProgram } from '../data/db';
 import { useActiveProgram, useAllSets, useCheckins, useNow, useSessions } from '../data/hooks';
 import { WeekdayPicker } from '../components/WeekdayPicker';
 import { RoutineImport } from '../components/RoutineImport';
+import { ClaudeBridge } from '../components/ClaudeBridge';
 import { recommendFromRecords } from '../engine/recommend';
 import { scheduleWarnings, sortWeekdays, WEEKDAY_LABEL, weekdayPlan } from '../engine/schedule';
 import { allExercises, getExercise } from '../domain/exercises';
@@ -18,7 +19,6 @@ export function ProgramPage() {
   const [creating, setCreating] = useState(false);
 
   if (program === undefined) return null;
-  const showGenerator = creating || program === null;
 
   return (
     <div className="space-y-4">
@@ -30,12 +30,27 @@ export function ProgramPage() {
           </Button>
         )}
       </header>
-      {showGenerator ? (
-        <Generator onDone={() => setCreating(false)} onCancel={program ? () => setCreating(false) : undefined} />
+      <ClaudeBridge onSaved={() => setCreating(false)} />
+      {creating ? (
+        <Generator onDone={() => setCreating(false)} onCancel={() => setCreating(false)} />
       ) : (
         program && <ProgramEditor program={program} />
       )}
-      <RoutineImport onApplied={() => setCreating(false)} />
+      {!creating && (
+        <details className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-300">앱이 자동으로 루틴 만들기</summary>
+          <p className="mt-2 text-sm text-slate-400">주당 일수·시간만으로 앱 규칙에 따라 루틴을 만듭니다. Claude 루틴을 쓴다면 필요 없습니다.</p>
+          <Button variant="ghost" className="mt-2 w-full" onClick={() => setCreating(true)}>
+            자동 루틴 만들기
+          </Button>
+        </details>
+      )}
+      <details className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-slate-300">메모 루틴 점검 (앱 규칙으로 분석)</summary>
+        <div className="mt-3">
+          <RoutineImport onApplied={() => setCreating(false)} />
+        </div>
+      </details>
     </div>
   );
 }

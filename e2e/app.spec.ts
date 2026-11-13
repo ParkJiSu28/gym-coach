@@ -14,6 +14,8 @@ const card = (page: Page, heading: string | RegExp) =>
 
 async function createProgram(page: Page, days: number) {
   await page.goto('/#program');
+  await page.getByText('앱이 자동으로 루틴 만들기').click();
+  await page.getByRole('button', { name: '자동 루틴 만들기' }).click();
   await page.getByRole('button', { name: `${days}일`, exact: true }).click();
   await page.getByRole('button', { name: '이 루틴으로 시작' }).click();
   await expect(page.getByRole('button', { name: '새 루틴 만들기' })).toBeVisible();
@@ -145,6 +147,7 @@ test.describe('J1 — 측정치 직접 입력', () => {
 test.describe('J2 — 버튼 하나로 기록 기반 루틴 추천', () => {
   test('기록이 없으면 기본 루틴과 안내를 보여준다', async ({ page }) => {
     await page.goto('/#today');
+    await page.getByText('앱이 기록으로 루틴 자동 추천').click();
     await page.getByRole('button', { name: '내 기록으로 루틴 추천' }).click();
     const result = card(page, '추천 결과');
     await expect(result).toBeVisible();
@@ -157,6 +160,7 @@ test.describe('J2 — 버튼 하나로 기록 기반 루틴 추천', () => {
     await addManualRecord(page, { daysAgo: 3, exercise: '바벨 백스쿼트', sets: [[100, 10], [100, 10], [100, 10]] });
 
     await nav(page, '오늘');
+    await page.getByText('앱이 기록으로 루틴 자동 추천').click();
     await page.getByRole('button', { name: '내 기록으로 루틴 추천' }).click();
     const result = card(page, '추천 결과');
     await expect(result).toBeVisible();
@@ -174,6 +178,7 @@ test.describe('J2 — 버튼 하나로 기록 기반 루틴 추천', () => {
 
   test('운동 가능 요일을 고르면 그 요일에 맞춰 프로그램이 바뀐다', async ({ page }) => {
     await page.goto('/#today');
+    await page.getByText('앱이 기록으로 루틴 자동 추천').click();
     const picker = page.getByRole('group', { name: '운동 가능 요일' });
     for (const d of ['월', '수', '금']) await picker.getByRole('button', { name: d, exact: true }).click();
     await page.getByRole('button', { name: '내 기록으로 루틴 추천' }).click();
@@ -338,6 +343,7 @@ test.describe('J7 메모 루틴 가져와서 점검', () => {
     const text =
       '상체A 루틴 (펙덱플라이 45*15,50*15,55*10 3세트, 벤치프레스 50*8 5세트, 스미스머신벤치프레스 55*10, 60*7 4세트, 어시스트 풀업머신 20*8 5세트, 맥그립랫풀다운 50*8 4세트) ' +
       '하체 A 루틴 (스미스머신스쿼트 80*8 4세트, 라잉레그컬 40*8 3세트, 카프프레스 40*30 3세트)';
+    await page.getByText('메모 루틴 점검').click();
     await page.getByRole('textbox', { name: '루틴 글' }).fill(text);
     await page.getByRole('button', { name: '읽고 점검하기' }).click();
 
@@ -351,7 +357,7 @@ test.describe('J7 메모 루틴 가져와서 점검', () => {
     await expect(page.getByText('50kg × 9').first()).toBeVisible();
 
     // 시간 제한: 30분으로 줄이면 "30분 맞추기" 수정안이 생김
-    await page.getByRole('spinbutton', { name: '운동 시간 제한(분)' }).fill('30');
+    await page.getByRole('spinbutton', { name: '운동 시간 제한(분)', exact: true }).fill('30');
     await expect(page.getByText(/30분 맞추기/).first()).toBeVisible();
 
     // 기록으로도 저장 (기본 날짜: 최근 며칠)
@@ -363,6 +369,7 @@ test.describe('J7 메모 루틴 가져와서 점검', () => {
     await expect(past.getByText('바벨 벤치프레스')).toBeInViewport();
     await expect(page.getByRole('button', { name: /저장된 지난 기록 2일 보기/ })).toBeVisible();
     await page.goto('/#program');
+    await page.getByText('메모 루틴 점검').click();
     await page.getByRole('textbox', { name: '루틴 글' }).fill(text);
     await page.getByRole('button', { name: '읽고 점검하기' }).click();
 
@@ -379,6 +386,7 @@ test.describe('J7 메모 루틴 가져와서 점검', () => {
 test.describe('J8 수정안 빼기 · 집중 부위 · 빼고 싶은 종목', () => {
   test('수정안을 X 하면 적용 목록에서 빠지고, 어깨 보호를 켜면 딥스가 바뀌고, 집중 부위는 5개까지', async ({ page }) => {
     await page.goto('/#program');
+    await page.getByText('메모 루틴 점검').click();
     await page.getByRole('textbox', { name: '루틴 글' }).fill(
       '상체A 루틴 (벤치프레스 50*8 4세트, 어시스트딥스 30*9 3세트, 랫풀다운 50*10 4세트) 하체A 루틴 (스쿼트 80*8 4세트, 라잉레그컬 40*8 3세트)',
     );
@@ -393,7 +401,7 @@ test.describe('J8 수정안 빼기 · 집중 부위 · 빼고 싶은 종목', ()
     await expect(page.getByText('라잉 레그 컬 → 시티드 레그 컬')).toBeVisible();
 
     // 어깨 보호
-    await page.getByRole('button', { name: '어깨 보호' }).click();
+    await card(page, '내 루틴 가져와서 점검').getByRole('button', { name: '어깨 보호' }).click();
     await expect(page.getByText(/어시스트 딥스 머신 → /)).toBeVisible();
 
     // 종목 하나 빼기
@@ -405,5 +413,46 @@ test.describe('J8 수정안 빼기 · 집중 부위 · 빼고 싶은 종목', ()
     for (const m of ['가슴', '광배근', '측면 삼각근', '이두', '삼두']) await page.getByRole('group', { name: '집중 부위 선택' }).getByRole('button', { name: m, exact: true }).click();
     await expect(page.getByRole('group', { name: '집중 부위 선택' }).getByRole('button', { name: '대퇴사두', exact: true })).toBeDisabled();
     await expect(page.getByText(/집중 부위 측면 삼각근/).first()).toBeVisible();
+  });
+});
+
+test.describe('J9 Claude 에게 루틴 받기 → 오늘 탭에서 골라 운동', () => {
+  test('내 기록을 복사하고, Claude 답변을 붙여넣어 저장하면 오늘 탭에서 루틴을 골라 그대로 운동한다', async ({ page }) => {
+    await page.goto('/#log');
+    await addManualRecord(page, { daysAgo: 2, exercise: '바벨 벤치프레스', sets: [[60, 8], [60, 8]] });
+
+    await nav(page, '루틴');
+    await page.getByRole('group', { name: 'Claude 집중 부위' }).getByRole('button', { name: '측면 삼각근' }).click();
+    const prompt = page.getByRole('textbox', { name: 'Claude에 보낼 글' });
+    await expect(prompt).toHaveValue(/바벨 벤치프레스 60×8, 60×8/);
+    await expect(prompt).toHaveValue(/집중 부위: 측면 삼각근/);
+    await expect(prompt).toHaveValue(/\[답변 형식\]/);
+
+    await page.getByRole('textbox', { name: 'Claude 답변' }).fill(
+      ['### 상체A', '- 바벨 벤치프레스 | 4세트 | 6-10회 | 62.5kg | 휴식 150초', '- 랫풀다운 | 3세트 | 8-12회 | 50kg | 휴식 120초', '### 하체A', '- 스쿼트 | 4세트 | 6-10회 | 80kg | 휴식 180초', '- 레그 익스텐션 | 3세트 | 12-15회'].join('\n'),
+    );
+    await page.getByRole('button', { name: '답변 읽기' }).click();
+    await page.getByRole('button', { name: '이 루틴으로 저장' }).click();
+    await expect(page.getByRole('status').filter({ hasText: '루틴으로 저장했습니다' })).toBeVisible();
+
+    await nav(page, '오늘');
+    const picker = page.getByRole('group', { name: '오늘 할 루틴' });
+    await picker.getByRole('button', { name: /하체A/ }).click();
+    await expect(page.getByText('선택: 하체A')).toBeVisible();
+    await expect(page.getByText(/80kg × 6회 × 4세트/)).toBeVisible();
+
+    await picker.getByRole('button', { name: /상체A/ }).click();
+    // 회복이 덜 됐어도 Claude 루틴의 세트 수(4) 그대로
+    await expect(page.getByText(/× 4세트/).first()).toBeVisible();
+    await page.getByRole('button', { name: '상체A 시작' }).click();
+    await logSet(page, '바벨 벤치프레스', 62.5, 8);
+    await page.getByRole('button', { name: '운동 종료' }).click();
+
+    await nav(page, '오늘');
+    const done = card(page, '오늘 운동 완료 ✓');
+    await expect(done.getByText(/1세트 · 총 500kg/)).toBeVisible();
+    await done.getByRole('button', { name: '분석 보기' }).click();
+    await expect(card(page, '종목별 성장').getByText(/60×8 → 62\.5×8/)).toBeVisible();
+    await expect(card(page, '최근 8주 주간 요약')).toBeVisible();
   });
 });

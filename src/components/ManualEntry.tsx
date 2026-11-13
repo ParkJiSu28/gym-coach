@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { addManualEntry, db, deleteExerciseSets } from '../data/db';
+import { addManualEntry, db, deleteExerciseSets, deleteSession } from '../data/db';
 import { allExercises, getExercise } from '../domain/exercises';
 import type { SetLog, WorkoutSession } from '../domain/types';
 import { ManualRecordError } from '../engine/records';
@@ -231,7 +231,17 @@ function ManualDay({ session, sets }: { session: WorkoutSession; sets: SetLog[] 
   }
   return (
     <li>
-      <p className="mb-1 text-xs font-semibold text-slate-400">{fmtDate(session.startedAt)}</p>
+      <p className="mb-1 flex items-center justify-between text-xs font-semibold text-slate-400">
+        {fmtDate(session.startedAt)}
+        <button
+          type="button"
+          aria-label={`${fmtDate(session.startedAt)} 기록 전체 삭제`}
+          className="rounded border border-rose-900 px-2 py-0.5 font-normal text-rose-300"
+          onClick={() => session.id && window.confirm(`${fmtDate(session.startedAt)} 기록을 모두 삭제할까요?`) && deleteSession(session.id)}
+        >
+          이 날 전체 삭제
+        </button>
+      </p>
       <ul className="space-y-1">
         {[...byEx.entries()].map(([exId, list]) => {
           const name = getExercise(exId)?.name ?? exId;
