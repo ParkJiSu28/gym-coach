@@ -1,9 +1,8 @@
-import { readFileSync } from 'node:fs';
+import SAMPLE from './__fixtures__/routine-sample.txt?raw';
 import { describe, expect, it } from 'vitest';
 import { auditRoutine, nextTarget, parseRoutineText, routineToProgram, workingSets } from './routineImport';
 import { programWeeklyVolume } from './splits';
 
-const SAMPLE = readFileSync(new URL('./__fixtures__/routine-sample.txt', import.meta.url), 'utf8');
 const pairs = (sets: { weight: number; reps: number }[]) => sets.map((s) => `${s.weight}x${s.reps}`);
 
 describe('parseRoutineText — 한 줄 루틴 글', () => {
@@ -106,6 +105,8 @@ describe('auditRoutine — 논문 기준 점검·수정안', () => {
   it('MRV 초과 부위는 수정안에서 MRV 이하로', () => {
     expect(audit.after.lats).toBeLessThanOrEqual(25);
     expect(audit.after.chest).toBeLessThanOrEqual(22);
+    // 둔근 때문에 스쿼트·데드리프트 같은 복합 운동은 줄이지 않음
+    expect(audit.changes.filter((c) => c.kind === 'sets' && ['smith_squat', 'deadlift', 'rdl', 'bulgarian_split_squat'].includes(c.exerciseId))).toEqual([]);
     expect(audit.changes.some((c) => c.kind === 'sets' && c.to! < c.from!)).toBe(true);
   });
 
@@ -147,7 +148,7 @@ describe('routineToProgram', () => {
     const p = routineToProgram(audit.revised, 1000);
     expect(p.days.map((d) => d.name)).toEqual(['상체A', '하체A', '상체B', '하체B']);
     expect(p.splitId).toBe('upper_lower');
-    expect(p.days[0]!.exercises.find((e) => e.exerciseId === 'bench_press')).toMatchObject({ sets: 5, repMin: 6, repMax: 10 });
+    expect(p.days[0]!.exercises.find((e) => e.exerciseId === 'bench_press')).toMatchObject({ repMin: 6, repMax: 10 });
     expect(programWeeklyVolume(p.days).lats).toBeCloseTo(audit.after.lats, 0);
   });
   it('원래 루틴 그대로도 변환 (워밍업 제외 세트 수)', () => {

@@ -331,3 +331,29 @@ test.describe('아이폰 대응', () => {
     expect(size).toBeGreaterThanOrEqual(16);
   });
 });
+
+test.describe('J7 메모 루틴 가져와서 점검', () => {
+  test('한 줄 루틴을 붙여넣으면 루틴별로 읽고, 수정안·다음 목표를 보여주고, 적용하면 내 루틴이 된다', async ({ page }) => {
+    await page.goto('/#program');
+    const text =
+      '상체A 루틴 (펙덱플라이 45*15,50*15,55*10 3세트, 벤치프레스 50*8 5세트, 스미스머신벤치프레스 55*10, 60*7 4세트, 어시스트 풀업머신 20*8 5세트, 맥그립랫풀다운 50*8 4세트) ' +
+      '하체 A 루틴 (스미스머신스쿼트 80*8 4세트, 라잉레그컬 40*8 3세트, 카프프레스 40*30 3세트)';
+    await page.getByRole('textbox', { name: '루틴 글' }).fill(text);
+    await page.getByRole('button', { name: '읽고 점검하기' }).click();
+
+    await expect(page.getByText('상체A · 5종목')).toBeVisible();
+    await expect(page.getByText('하체A · 3종목')).toBeVisible();
+    await expect(page.getByText(/인식 못한 종목/)).toHaveCount(0);
+    // 라잉 → 시티드 레그컬 교체 제안과 근거
+    await expect(page.getByText('라잉 레그 컬 → 시티드 레그 컬')).toBeVisible();
+    await expect(page.getByText(/Maeo.*2021/).first()).toBeVisible();
+    // 다음 목표: 벤치 50kg × 9
+    await expect(page.getByText('50kg × 9').first()).toBeVisible();
+
+    await page.getByRole('button', { name: '수정안 적용' }).click();
+    await expect(page.getByRole('status').filter({ hasText: '수정안을 내 루틴으로 저장' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '새 루틴 만들기' })).toBeVisible();
+    await nav(page, '오늘');
+    await expect(page.getByText(/상체A|하체A/).first()).toBeVisible();
+  });
+});

@@ -3,6 +3,7 @@ import { Badge, Button, Card, CitationChip, WhyCard } from '../components/ui';
 import { db, saveActiveProgram } from '../data/db';
 import { useActiveProgram, useAllSets, useCheckins, useNow, useSessions } from '../data/hooks';
 import { WeekdayPicker } from '../components/WeekdayPicker';
+import { RoutineImport } from '../components/RoutineImport';
 import { recommendFromRecords } from '../engine/recommend';
 import { scheduleWarnings, sortWeekdays, WEEKDAY_LABEL, weekdayPlan } from '../engine/schedule';
 import { allExercises, getExercise } from '../domain/exercises';
@@ -34,6 +35,7 @@ export function ProgramPage() {
       ) : (
         program && <ProgramEditor program={program} />
       )}
+      <RoutineImport onApplied={() => setCreating(false)} />
     </div>
   );
 }

@@ -14,6 +14,7 @@ export const EXERCISES: Exercise[] = [
   { id: 'smith_bench', name: '스미스 벤치프레스', equipment: 'smith', compound: true, increment: 2.5, muscles: { chest: 1, triceps: 0.5, front_delts: 0.5 } },
   { id: 'smith_incline_bench', name: '스미스 인클라인 벤치프레스', equipment: 'smith', compound: true, increment: 2.5, muscles: { chest: 1, front_delts: 0.5, triceps: 0.5 } },
   { id: 'db_fly', name: '덤벨 플라이', equipment: 'dumbbell', compound: false, increment: 1, muscles: { chest: 1 } },
+  { id: 'assisted_dip', name: '어시스트 딥스 머신', equipment: 'machine', compound: true, increment: 5, muscles: { chest: 1, triceps: 1, front_delts: 0.5 } },
   { id: 'push_up', name: '푸시업', equipment: 'bodyweight', compound: true, increment: 0, muscles: { chest: 1, triceps: 0.5, front_delts: 0.5 } },
 
   // ── 등
@@ -25,6 +26,10 @@ export const EXERCISES: Exercise[] = [
   { id: 'chest_supported_row', name: '체스트 서포티드 로우', equipment: 'machine', compound: true, increment: 5, muscles: { upper_back: 1, lats: 0.5, rear_delts: 0.5, biceps: 0.5 } },
   { id: 't_bar_row', name: 'T바 로우', equipment: 'machine', compound: true, increment: 5, muscles: { upper_back: 1, lats: 1, rear_delts: 0.5, biceps: 0.5 } },
   { id: 'straight_arm_pulldown', name: '스트레이트 암 풀다운', equipment: 'cable', compound: false, increment: 2.5, muscles: { lats: 1 } },
+  { id: 'assisted_pull_up', name: '어시스트 풀업 머신', equipment: 'machine', compound: true, increment: 5, muscles: { lats: 1, upper_back: 0.5, biceps: 0.5 } },
+  { id: 'high_row', name: '하이 로우 머신', equipment: 'machine', compound: true, increment: 5, muscles: { lats: 1, upper_back: 1, biceps: 0.5, rear_delts: 0.5 } },
+  { id: 'low_row', name: '로우 로우 머신', equipment: 'machine', compound: true, increment: 5, muscles: { upper_back: 1, lats: 1, biceps: 0.5, rear_delts: 0.5 } },
+  { id: 'db_pullover', name: '덤벨 풀오버', equipment: 'dumbbell', compound: false, increment: 2, muscles: { lats: 1, chest: 0.5 } },
   { id: 'shrug', name: '슈러그', equipment: 'dumbbell', compound: false, increment: 2, muscles: { upper_back: 1, forearms: 0.5 } },
 
   // ── 어깨
@@ -33,6 +38,7 @@ export const EXERCISES: Exercise[] = [
   { id: 'smith_ohp', name: '스미스 숄더 프레스', equipment: 'smith', compound: true, increment: 2.5, muscles: { front_delts: 1, side_delts: 0.5, triceps: 0.5 } },
   { id: 'machine_shoulder_press', name: '머신 숄더 프레스', equipment: 'machine', compound: true, increment: 5, muscles: { front_delts: 1, side_delts: 0.5, triceps: 0.5 } },
   { id: 'lateral_raise', name: '사이드 레터럴 레이즈', equipment: 'dumbbell', compound: false, increment: 1, muscles: { side_delts: 1 } },
+  { id: 'machine_lateral_raise', name: '사이드 레터럴 레이즈 머신', equipment: 'machine', compound: false, increment: 2.5, muscles: { side_delts: 1 } },
   { id: 'cable_lateral_raise', name: '케이블 레터럴 레이즈', equipment: 'cable', compound: false, increment: 1.25, muscles: { side_delts: 1 } },
   { id: 'rear_delt_fly', name: '리어 델트 플라이', equipment: 'machine', compound: false, increment: 2.5, muscles: { rear_delts: 1, upper_back: 0.5 } },
   { id: 'face_pull', name: '페이스 풀', equipment: 'cable', compound: false, increment: 2.5, muscles: { rear_delts: 1, upper_back: 0.5 } },
@@ -42,6 +48,7 @@ export const EXERCISES: Exercise[] = [
   { id: 'db_curl', name: '덤벨 컬', equipment: 'dumbbell', compound: false, increment: 1, muscles: { biceps: 1, forearms: 0.5 } },
   { id: 'incline_db_curl', name: '인클라인 덤벨 컬', equipment: 'dumbbell', compound: false, increment: 1, muscles: { biceps: 1 } },
   { id: 'hammer_curl', name: '해머 컬', equipment: 'dumbbell', compound: false, increment: 1, muscles: { biceps: 1, forearms: 1 } },
+  { id: 'cable_hammer_curl', name: '케이블 해머 컬', equipment: 'cable', compound: false, increment: 2.5, muscles: { biceps: 1, forearms: 1 } },
   { id: 'cable_curl', name: '케이블 컬', equipment: 'cable', compound: false, increment: 2.5, muscles: { biceps: 1 } },
   { id: 'preacher_curl', name: '프리처 컬', equipment: 'machine', compound: false, increment: 2.5, muscles: { biceps: 1 } },
   { id: 'triceps_pushdown', name: '트라이셉스 푸시다운', equipment: 'cable', compound: false, increment: 2.5, muscles: { triceps: 1 } },
@@ -57,6 +64,7 @@ export const EXERCISES: Exercise[] = [
   { id: 'hack_squat', name: '핵 스쿼트', equipment: 'machine', compound: true, increment: 5, muscles: { quads: 1, glutes: 0.5 } },
   { id: 'leg_press', name: '레그 프레스', equipment: 'machine', compound: true, increment: 10, muscles: { quads: 1, glutes: 0.5 } },
   { id: 'bulgarian_split_squat', name: '불가리안 스플릿 스쿼트', equipment: 'dumbbell', compound: true, increment: 2, muscles: { quads: 1, glutes: 1 } },
+  { id: 'pendulum_squat', name: '펜듈럼 스쿼트', equipment: 'machine', compound: true, increment: 5, muscles: { quads: 1, glutes: 0.5 } },
   { id: 'leg_extension', name: '레그 익스텐션', equipment: 'machine', compound: false, increment: 5, muscles: { quads: 1 } },
   { id: 'deadlift', name: '컨벤셔널 데드리프트', equipment: 'barbell', compound: true, increment: 5, muscles: { glutes: 1, hamstrings: 1, lower_back: 1, upper_back: 0.5, quads: 0.5, forearms: 0.5 } },
   { id: 'rdl', name: '루마니안 데드리프트', equipment: 'barbell', compound: true, increment: 2.5, muscles: { hamstrings: 1, glutes: 1, lower_back: 0.5 } },
@@ -64,6 +72,10 @@ export const EXERCISES: Exercise[] = [
   { id: 'seated_leg_curl', name: '시티드 레그 컬', equipment: 'machine', compound: false, increment: 2.5, muscles: { hamstrings: 1 } },
   { id: 'hip_thrust', name: '힙 쓰러스트', equipment: 'barbell', compound: true, increment: 5, muscles: { glutes: 1, hamstrings: 0.5 } },
   { id: 'machine_hip_thrust', name: '힙 쓰러스트 머신', equipment: 'machine', compound: true, increment: 5, muscles: { glutes: 1, hamstrings: 0.5 } },
+  { id: 'hip_abduction', name: '힙 어브덕션 (아웃타이)', equipment: 'machine', compound: false, increment: 5, muscles: { glutes: 1 } },
+  // 내전근은 별도 부위가 없어 대둔근 협력(고관절 신전)으로만 계산
+  { id: 'hip_adduction', name: '힙 어덕션 (이너타이)', equipment: 'machine', compound: false, increment: 5, muscles: { glutes: 0.5 } },
+  { id: 'calf_press', name: '카프 프레스 (레그프레스)', equipment: 'machine', compound: false, increment: 5, muscles: { calves: 1 } },
   { id: 'standing_calf_raise', name: '스탠딩 카프 레이즈', equipment: 'machine', compound: false, increment: 5, muscles: { calves: 1 } },
   { id: 'seated_calf_raise', name: '시티드 카프 레이즈', equipment: 'machine', compound: false, increment: 5, muscles: { calves: 1 } },
 
