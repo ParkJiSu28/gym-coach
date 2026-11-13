@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Tab } from '../App';
-import { ManualEntryForm, ManualEntryList } from '../components/ManualEntry';
+import { ManualEntryForm, ManualEntryList, PastRecordsShortcut } from '../components/ManualEntry';
 import { PasteImport } from '../components/PasteImport';
 import { TransferCard } from '../components/TransferCard';
 import { RestTimer } from '../components/RestTimer';
@@ -94,6 +94,7 @@ export function LogPage({ go }: { go: (t: Tab) => void }) {
     return (
       <div className="space-y-4">
         <h1 className="text-2xl font-bold">운동 기록</h1>
+        <PastRecordsShortcut />
         <Card title="운동 시작">
           <div className="space-y-2">
             {program?.id && nextDay && (

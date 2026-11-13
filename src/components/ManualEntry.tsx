@@ -181,7 +181,25 @@ function Row({
   );
 }
 
-/** 직접 입력한 기록 목록 (날짜별 · 종목별), 삭제 가능 */
+/** 기록 탭 맨 아래의 지난 기록 목록으로 스크롤 (불러오는 중이면 잠깐 기다림) */
+export function scrollToPastRecords(tries = 20) {
+  const el = document.getElementById('past-records');
+  if (el) el.scrollIntoView({ block: 'start' });
+  else if (tries > 0) setTimeout(() => scrollToPastRecords(tries - 1), 100);
+}
+
+/** 기록 탭 위쪽: 저장된 지난 기록이 있으면 바로 내려가는 버튼 */
+export function PastRecordsShortcut() {
+  const days = useLiveQuery(() => db.sessions.filter((s) => s.manual === true).count(), []);
+  if (!days) return null;
+  return (
+    <Button variant="ghost" className="w-full" onClick={() => scrollToPastRecords()}>
+      저장된 지난 기록 {days}일 보기 ↓
+    </Button>
+  );
+}
+
+/** 직접 입력·가져온 루틴으로 저장한 지난 기록 목록 (날짜별 · 종목별), 삭제 가능 */
 export function ManualEntryList() {
   const data = useLiveQuery(async () => {
     const sessions = await db.sessions.filter((s) => s.manual === true).toArray();
@@ -193,13 +211,15 @@ export function ManualEntryList() {
 
   if (!data || data.sessions.length === 0) return null;
   return (
-    <Card title="직접 입력한 기록">
+    <div id="past-records" className="scroll-mt-4">
+    <Card title="저장된 지난 기록">
       <ul className="space-y-3">
         {data.sessions.map((s) => (
           <ManualDay key={s.id} session={s} sets={data.sets.filter((x) => x.sessionId === s.id)} />
         ))}
       </ul>
     </Card>
+    </div>
   );
 }
 

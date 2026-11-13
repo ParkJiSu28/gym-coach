@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { saveActiveProgram, saveRoutineRecords } from '../data/db';
 import { ManualRecordError } from '../engine/records';
+import { scrollToPastRecords } from './ManualEntry';
 import { allExercises, getExercise } from '../domain/exercises';
 import { VOLUME_LANDMARKS } from '../domain/research';
 import { MUSCLES, MUSCLE_LABEL, type Muscle } from '../domain/types';
@@ -359,6 +360,19 @@ export function RoutineImport({ onApplied }: { onApplied?: () => void }) {
                     {recMsg.text}
                   </p>
                 )}
+                {recMsg?.ok && (
+                  <Button
+                    variant="subtle"
+                    className="mt-2 w-full"
+                    onClick={() => {
+                      window.location.hash = 'log';
+                      scrollToPastRecords();
+                    }}
+                  >
+                    기록 탭에서 보기
+                  </Button>
+                )}
+                <p className="mt-1 text-xs text-slate-500">기록은 이 기기에만 저장됩니다. 다른 기기로는 기록 탭 맨 아래 "기기 간 기록 옮기기"로 보내세요.</p>
               </section>
 
               <div className="flex gap-2">

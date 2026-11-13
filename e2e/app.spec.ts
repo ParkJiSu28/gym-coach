@@ -77,7 +77,7 @@ test.describe('J1 — 측정치 직접 입력', () => {
     await addManualRecord(page, { daysAgo: 3, exercise: '바벨 벤치프레스', sets: [[80, 8], [80, 7], [75, 8]] });
     await expect(page.getByRole('status')).toContainText('바벨 벤치프레스 3세트 저장됨');
 
-    const list = card(page, '직접 입력한 기록');
+    const list = card(page, '저장된 지난 기록');
     await expect(list.getByText(/바벨 벤치프레스/)).toBeVisible();
     await expect(list.getByText('80×8, 80×7, 75×8')).toBeVisible();
 
@@ -121,24 +121,24 @@ test.describe('J1 — 측정치 직접 입력', () => {
     await imp.getByLabel('운동한 날짜').fill(localDate(4));
     await imp.getByRole('button', { name: /1개 종목 저장/ }).click();
     await expect(imp.getByRole('status')).toContainText('1개 종목 · 3세트 저장됨');
-    await expect(card(page, '직접 입력한 기록').getByText('힙 쓰러스트 머신')).toBeVisible();
+    await expect(card(page, '저장된 지난 기록').getByText('힙 쓰러스트 머신')).toBeVisible();
   });
 
   test('미래 날짜는 저장되지 않고 오류를 보여준다', async ({ page }) => {
     await page.goto('/#log');
     await addManualRecord(page, { daysAgo: -2, exercise: '바벨 벤치프레스', sets: [[80, 8]] });
     await expect(page.getByRole('alert')).toContainText('미래');
-    await expect(card(page, '직접 입력한 기록')).toHaveCount(0);
+    await expect(card(page, '저장된 지난 기록')).toHaveCount(0);
   });
 
   test('직접 입력한 기록을 삭제할 수 있다', async ({ page }) => {
     await page.goto('/#log');
     await addManualRecord(page, { daysAgo: 1, exercise: '바벨 백스쿼트', sets: [[100, 5], [100, 5]] });
-    const list = card(page, '직접 입력한 기록');
+    const list = card(page, '저장된 지난 기록');
     await expect(list.getByText(/바벨 백스쿼트/)).toBeVisible();
     page.once('dialog', (d) => d.accept());
     await list.getByRole('button', { name: /삭제/ }).first().click();
-    await expect(card(page, '직접 입력한 기록')).toHaveCount(0);
+    await expect(card(page, '저장된 지난 기록')).toHaveCount(0);
   });
 });
 
@@ -287,7 +287,7 @@ test.describe('J6 — PC 에서 입력하고 폰으로 옮기기', () => {
     await recv.getByRole('button', { name: '받기 (기존 기록에 합치기)' }).click();
     await expect(recv.getByRole('status')).toContainText('2세트 추가');
 
-    const list = card(phonePage, '직접 입력한 기록');
+    const list = card(phonePage, '저장된 지난 기록');
     await expect(list.getByText('바벨 벤치프레스')).toBeVisible();
     await expect(list.getByText('컨벤셔널 데드리프트')).toBeVisible();
 
@@ -357,6 +357,14 @@ test.describe('J7 메모 루틴 가져와서 점검', () => {
     // 기록으로도 저장 (기본 날짜: 최근 며칠)
     await page.getByRole('button', { name: '기록으로 저장' }).click();
     await expect(page.getByRole('status').filter({ hasText: /2일 · \d+세트를 기록으로 저장/ })).toBeVisible();
+    // 저장 후 바로 기록 탭의 목록으로 이동
+    await page.getByRole('button', { name: '기록 탭에서 보기' }).click();
+    const past = card(page, '저장된 지난 기록');
+    await expect(past.getByText('바벨 벤치프레스')).toBeInViewport();
+    await expect(page.getByRole('button', { name: /저장된 지난 기록 2일 보기/ })).toBeVisible();
+    await page.goto('/#program');
+    await page.getByRole('textbox', { name: '루틴 글' }).fill(text);
+    await page.getByRole('button', { name: '읽고 점검하기' }).click();
 
     await page.getByRole('button', { name: '수정안 적용' }).click();
     await expect(page.getByRole('status').filter({ hasText: '수정안을 내 루틴으로 저장' })).toBeVisible();
