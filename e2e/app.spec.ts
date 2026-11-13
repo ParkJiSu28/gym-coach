@@ -456,3 +456,23 @@ test.describe('J9 Claude 에게 루틴 받기 → 오늘 탭에서 골라 운동
     await expect(card(page, '최근 8주 주간 요약')).toBeVisible();
   });
 });
+
+test.describe('J10 Claude 답변이 다른 표기여도 전부 루틴으로', () => {
+  test('"4×6-10" 표기 + 모르는 종목 1개를 골라 저장하면 모든 종목이 루틴·오늘 탭에 보인다', async ({ page }) => {
+    await page.goto('/#program');
+    await page.getByRole('textbox', { name: 'Claude 답변' }).fill(
+      ['### 상체A', '- 바벨 벤치프레스 4×6-10 (52.5kg)', '- 랫풀다운: 3 x 8~12회 @ 50kg', '- 케이블 Y레이즈 3×12-15', '### 하체A', '- 스미스 스쿼트 4×6-10 (80kg)', '- 레그 익스텐션 3×12-15'].join('\n'),
+    );
+    await page.getByRole('button', { name: '답변 읽기' }).click();
+    await expect(page.getByText('2개 루틴 · 5종목을 읽었습니다')).toBeVisible();
+    await page.getByRole('combobox', { name: /케이블 Y레이즈 종목 선택/ }).selectOption({ label: '케이블 레터럴 레이즈' });
+    await page.getByRole('button', { name: '이 루틴으로 저장' }).click();
+
+    const editor = card(page, '구성 편집');
+    for (const n of ['바벨 벤치프레스', '랫 풀다운', '케이블 레터럴 레이즈', '스미스 스쿼트', '레그 익스텐션']) await expect(editor.locator('li').filter({ hasText: n }).first()).toBeVisible();
+
+    await nav(page, '오늘');
+    await expect(page.getByRole('group', { name: '오늘 할 루틴' }).getByText('3종목', { exact: false }).first()).toBeVisible();
+    await expect(page.getByText(/52\.5kg × 6회 × 4세트/)).toBeVisible();
+  });
+});

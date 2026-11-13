@@ -62,7 +62,7 @@ export function ClaudeBridge({ onSaved }: { onSaved?: () => void }) {
   }
 
   function setItemExercise(di: number, ii: number, id: string) {
-    setPlan((p) => p && { days: p.days.map((d, i) => (i !== di ? d : { ...d, items: d.items.map((it, j) => (j === ii ? { ...it, exerciseId: id || null } : it)) })) });
+    setPlan((p) => p && { ...p, days: p.days.map((d, i) => (i !== di ? d : { ...d, items: d.items.map((it, j) => (j === ii ? { ...it, exerciseId: id || null } : it)) })) });
   }
 
   async function save() {
@@ -144,7 +144,20 @@ export function ClaudeBridge({ onSaved }: { onSaved?: () => void }) {
         )}
         {plan && (
           <div className="mt-3 space-y-2">
+            <p className="text-sm text-slate-300">
+              {plan.days.length}개 루틴 · {plan.days.reduce((a, d) => a + d.items.length, 0)}종목을 읽었습니다. 아래를 확인하고 저장하세요.
+            </p>
             {unmatched > 0 && <Badge tone="amber">인식 못한 종목 {unmatched}개 — 골라 주세요 (안 고르면 빠짐)</Badge>}
+            {plan.skipped.length > 0 && (
+              <div role="alert" className="rounded-lg border border-amber-700 bg-amber-950 p-2 text-xs text-amber-300">
+                <p className="font-semibold">읽지 못한 줄 {plan.skipped.length}개 — 세트·반복을 못 찾았습니다. 필요하면 Claude에게 "앱 형식(종목 | N세트 | a-b회)으로 다시 써 줘"라고 하세요.</p>
+                <ul className="mt-1 list-disc pl-4">
+                  {plan.skipped.map((l, i) => (
+                    <li key={i}>{l}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {plan.days.map((d, di) => (
               <div key={d.name + di} className="rounded-lg border border-slate-800 p-2">
                 <p className="mb-1 text-sm font-semibold">{d.name}</p>

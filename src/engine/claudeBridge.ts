@@ -81,7 +81,7 @@ export function buildClaudePrompt(input: PromptInput): string {
     L.push('');
   }
 
-  L.push('[답변 형식] 루틴을 앱에 그대로 붙여넣을 거라, 루틴 부분은 꼭 아래 형식으로 써 줘. 설명은 형식 밖에 자유롭게.');
+  L.push('[답변 형식] 루틴을 앱에 그대로 붙여넣을 거라, 루틴 부분은 꼭 아래 형식으로 써 줘. 표나 "4×8-10" 같은 다른 표기 말고 한 종목당 한 줄, 칸은 | 로 구분. 설명은 형식 밖에 자유롭게.');
   L.push('### 상체A');
   L.push('- 바벨 벤치프레스 | 4세트 | 6-10회 | 60kg | 휴식 150초');
   L.push('- 랫 풀다운 | 3세트 | 8-12회 | 50kg | 휴식 120초');
@@ -110,7 +110,11 @@ export interface PlanDay {
 
 export interface RoutinePlan {
   days: PlanDay[];
+  /** 종목 줄처럼 보이지만 세트·반복을 못 읽은 줄 (사용자에게 보여줌) */
+  skipped: string[];
 }
+
+const looksLikeItem = (line: string) => /^\s*(?:[-*•]|\d+[.)]|\|)/.test(line) && /[가-힣]{2,}/.test(line) && /\d/.test(line);
 
 const HEADER_PATTERNS = [/^#{1,6}\s*(.+?)\s*:?$/, /^\*\*(.+?)\*\*\s*:?$/, /^\[(.+?)\]$/];
 const cleanHeader = (s: string) => s.replace(/\*\*/g, '').replace(/[:：]$/, '').trim();
@@ -152,6 +156,14 @@ function readFields(parts: string[]): Fields {
       f.sets = Number(st[1]);
       part = part.replace(st[0], ' ');
     }
+    // N×a-b / N x a~b (세트×반복) — 범위보다 먼저 읽어야 "4×6-10" 의 4 를 놓치지 않음
+    const sx = /(\d+)\s*[x×X*]\s*(\d+)(?:\s*[-~–]\s*(\d+))?\s*(?:회|reps?)?/i.exec(part);
+    if (sx && f.sets === undefined) {
+      f.sets = Number(sx[1]);
+      f.repMin = Number(sx[2]);
+      f.repMax = Number(sx[3] ?? sx[2]);
+      part = part.replace(sx[0], ' ');
+    }
     const range = /(\d+)\s*[-~–]\s*(\d+)\s*(?:회|reps?)?/i.exec(part);
     if (range && f.repMin === undefined) {
       f.repMin = Number(range[1]);
@@ -189,7 +201,7 @@ function readItem(line: string): PlanItem | null {
     name = m[1]!;
     parts = [m[2]!];
   }
-  name = name.replace(/\*\*/g, '').replace(/[:：]$/, '').trim();
+  name = name.replace(/\*\*/g, '').replace(/[\s:：—–\-@(（]+$/, '').trim();
   if (!name || /^(종목|운동|exercise)$/i.test(name)) return null;
   const f = readFields(parts);
   if (f.sets === undefined || f.repMin === undefined || f.sets < 1 || f.sets > 10) return null;
@@ -206,6 +218,7 @@ function readItem(line: string): PlanItem | null {
 
 export function parseRoutinePlan(text: string): RoutinePlan {
   const days: PlanDay[] = [];
+  const skipped: string[] = [];
   let cur: PlanDay | null = null;
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
@@ -217,14 +230,17 @@ export function parseRoutinePlan(text: string): RoutinePlan {
       continue;
     }
     const item = readItem(line);
-    if (!item) continue;
+    if (!item) {
+      if (looksLikeItem(line)) skipped.push(line);
+      continue;
+    }
     if (!cur) {
       cur = { name: '루틴', items: [] };
       days.push(cur);
     }
     cur.items.push(item);
   }
-  return { days: days.filter((d) => d.items.length > 0) };
+  return { days: days.filter((d) => d.items.length > 0), skipped };
 }
 
 function guessSplit(days: PlanDay[]): SplitId {
