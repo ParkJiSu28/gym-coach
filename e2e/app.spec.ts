@@ -240,6 +240,67 @@ test.describe('J4 — 운동 중 자유로운 변경', () => {
   });
 });
 
+test.describe('J6 — PC 에서 입력하고 폰으로 옮기기', () => {
+  test('PC 키보드 입력: Enter 로 다음 세트 칸, Ctrl+Enter 로 저장', async ({ page }) => {
+    await page.goto('/#log');
+    const form = card(page, '지난 기록 직접 입력');
+    await form.getByLabel('날짜').fill(localDate(2));
+    await form.getByRole('combobox', { name: '운동' }).selectOption({ label: '바벨 백스쿼트' });
+    await form.getByRole('spinbutton', { name: '1세트 무게' }).fill('100');
+    await form.getByRole('spinbutton', { name: '1세트 반복' }).fill('8');
+    await form.getByRole('spinbutton', { name: '1세트 반복' }).press('Enter');
+    // 새 줄이 생기고 무게 칸으로 커서 이동, 값은 이전 세트 복사
+    await expect(form.getByRole('spinbutton', { name: '2세트 무게' })).toBeFocused();
+    await expect(form.getByRole('spinbutton', { name: '2세트 무게' })).toHaveValue('100');
+    await page.keyboard.type('5'); // 100 → 1005 가 되지 않도록 포커스 시 전체 선택
+    await expect(form.getByRole('spinbutton', { name: '2세트 무게' })).toHaveValue('5');
+    await form.getByRole('spinbutton', { name: '2세트 무게' }).fill('95');
+    await form.getByRole('spinbutton', { name: '2세트 반복' }).press('Control+Enter');
+    await expect(page.getByRole('status').first()).toContainText('바벨 백스쿼트 2세트 저장됨');
+  });
+
+  test('PC 에서 만든 코드를 폰에 붙여넣으면 기록이 합쳐진다', async ({ browser }) => {
+    const mobile = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: 'block' as const, baseURL: 'http://127.0.0.1:4173' };
+    const pcCtx = await browser.newContext({ serviceWorkers: 'block', baseURL: 'http://127.0.0.1:4173', permissions: ['clipboard-read', 'clipboard-write'] });
+    const phoneCtx = await browser.newContext(mobile);
+    const pcPage = await pcCtx.newPage();
+    const phonePage = await phoneCtx.newPage();
+
+    // 폰에는 원래 기록이 하나 있음
+    await phonePage.goto('/#log');
+    await addManualRecord(phonePage, { daysAgo: 1, exercise: '컨벤셔널 데드리프트', sets: [[140, 5]] });
+
+    // PC 에서 입력 후 보내기
+    await pcPage.goto('/#log');
+    await addManualRecord(pcPage, { daysAgo: 3, exercise: '바벨 벤치프레스', sets: [[80, 8], [80, 7]] });
+    const send = card(pcPage, '기기 간 기록 옮기기');
+    await send.getByRole('button', { name: '보낼 코드 만들기' }).click();
+    await expect(send.getByText(/1개 세션 · 2세트/)).toBeVisible();
+    const code = await send.getByLabel('보낼 코드').inputValue();
+    expect(code).toMatch(/^GC[01]\./);
+    await send.getByRole('button', { name: '코드 복사' }).click();
+    await expect(send.getByText('복사됨')).toBeVisible();
+
+    // 폰에서 받기 (카톡에서 복사하면 앞뒤에 글자가 붙을 수 있음)
+    const recv = card(phonePage, '기기 간 기록 옮기기');
+    await recv.getByLabel('받은 코드 붙여넣기').fill(`나와의 채팅\n${code}\n오후 8:01`);
+    await recv.getByRole('button', { name: '받기 (기존 기록에 합치기)' }).click();
+    await expect(recv.getByRole('status')).toContainText('2세트 추가');
+
+    const list = card(phonePage, '직접 입력한 기록');
+    await expect(list.getByText('바벨 벤치프레스')).toBeVisible();
+    await expect(list.getByText('컨벤셔널 데드리프트')).toBeVisible();
+
+    // 같은 코드를 또 받아도 중복 없음
+    await recv.getByLabel('받은 코드 붙여넣기').fill(code);
+    await recv.getByRole('button', { name: '받기 (기존 기록에 합치기)' }).click();
+    await expect(recv.getByRole('status')).toContainText('이미 있는 2세트는 건너뜀');
+
+    await pcCtx.close();
+    await phoneCtx.close();
+  });
+});
+
 test.describe('J5 — 논문 기반 분석 리포트', () => {
   test('부족한 부위와 할 일, 근거 논문을 보여준다', async ({ page }) => {
     await page.goto('/#log');
