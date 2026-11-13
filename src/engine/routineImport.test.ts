@@ -327,3 +327,12 @@ describe('빼고 싶은 종목 (예: 어깨 보호)', () => {
     expect(b.revised.flatMap((d) => d.entries.map((e) => e.exerciseId))).not.toContain('pendulum_squat');
   });
 });
+
+describe('빼고 싶은 종목의 대체는 그날 겹치지 않게', () => {
+  it('바벨 벤치가 있는 날엔 딥스를 다른 벤치류로 바꾸지 않음 (바꾸자마자 중복으로 빠지는 일 없음)', () => {
+    const a = auditRoutine(parseRoutineText(SAMPLE), { avoid: AVOID_PRESETS.find((p) => p.id === 'shoulder')!.ids });
+    const swapA = a.changes.find((c) => c.kind === 'swap' && c.day === '상체A' && c.exerciseId === 'assisted_dip')!;
+    expect(a.changes.some((c) => c.kind === 'remove' && c.day === '상체A' && c.exerciseId === swapA.toExerciseId)).toBe(false);
+    expect(a.revised.find((d) => d.name === '상체A')!.entries.map((e) => e.exerciseId)).toContain(swapA.toExerciseId);
+  });
+});

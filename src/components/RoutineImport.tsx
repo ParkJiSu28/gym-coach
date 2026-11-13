@@ -3,8 +3,8 @@ import { saveActiveProgram, saveRoutineRecords } from '../data/db';
 import { ManualRecordError } from '../engine/records';
 import { allExercises, getExercise } from '../domain/exercises';
 import { VOLUME_LANDMARKS } from '../domain/research';
-import { MUSCLES, MUSCLE_LABEL } from '../domain/types';
-import { auditRoutine, parseRoutineText, routineToProgram, workingSets, type RoutineAudit, type RoutineDay } from '../engine/routineImport';
+import { MUSCLES, MUSCLE_LABEL, type Muscle } from '../domain/types';
+import { AVOID_PRESETS, auditRoutine, parseRoutineText, routineToProgram, workingSets, type RoutineAudit, type RoutineDay } from '../engine/routineImport';
 import { Badge, Button, Card, CitationChip } from './ui';
 
 const KIND_LABEL = { remove: '빼기', sets: '세트', add: '추가', swap: '교체', move: '옮기기' } as const;
@@ -31,11 +31,20 @@ export function RoutineImport({ onApplied }: { onApplied?: () => void }) {
   const [dates, setDates] = useState<string[]>([]);
   const [maxMin, setMaxMin] = useState('');
   const [recMsg, setRecMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [rejected, setRejected] = useState<string[]>([]);
+  const [priorities, setPriorities] = useState<Muscle[]>([]);
+  const [presets, setPresets] = useState<string[]>([]);
+  const [customAvoid, setCustomAvoid] = useState<string[]>([]);
+  const avoid = useMemo(() => [...new Set([...AVOID_PRESETS.filter((p) => presets.includes(p.id)).flatMap((p) => p.ids), ...customAvoid])], [presets, customAvoid]);
+  const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
 
   const unmatched = days?.flatMap((d) => d.entries.filter((e) => !e.exerciseId)).length ?? 0;
   const audit: RoutineAudit | null = useMemo(
-    () => (days && days.length ? auditRoutine(days, { maxMinutes: Number(maxMin) >= 15 ? Number(maxMin) : undefined }) : null),
-    [days, maxMin],
+    () =>
+      days && days.length
+        ? auditRoutine(days, { maxMinutes: Number(maxMin) >= 15 ? Number(maxMin) : undefined, rejected, priorities, avoid })
+        : null,
+    [days, maxMin, rejected, priorities, avoid],
   );
 
   function read() {
@@ -44,6 +53,7 @@ export function RoutineImport({ onApplied }: { onApplied?: () => void }) {
     setDays(parsed.length ? parsed : null);
     setDates(defaultDates(parsed.length));
     setRecMsg(null);
+    setRejected([]);
   }
 
   async function saveRecords() {
@@ -62,7 +72,7 @@ export function RoutineImport({ onApplied }: { onApplied?: () => void }) {
 
   async function apply(revised: boolean) {
     if (!audit || !days) return;
-    await saveActiveProgram(routineToProgram(revised ? audit.revised : days));
+    await saveActiveProgram(routineToProgram(revised ? audit.revised : days, Date.now(), priorities));
     setMsg({ ok: true, text: revised ? '수정안을 내 루틴으로 저장했습니다.' : '원래 루틴을 그대로 저장했습니다.' });
     onApplied?.();
   }
@@ -95,6 +105,63 @@ export function RoutineImport({ onApplied }: { onApplied?: () => void }) {
         />
         분
       </label>
+
+      <div className="mt-3">
+        <p className="mb-1 text-sm text-slate-400">
+          집중 부위 <span className="text-xs">(최대 5개 · {priorities.length}/5)</span>
+        </p>
+        <div role="group" aria-label="집중 부위 선택" className="flex flex-wrap gap-1.5">
+          {MUSCLES.map((m) => {
+            const on = priorities.includes(m);
+            return (
+              <button
+                key={m}
+                type="button"
+                aria-pressed={on}
+                disabled={!on && priorities.length >= 5}
+                onClick={() => setPriorities((ps) => toggle(ps, m))}
+                className={`rounded-full border px-3 py-1 text-sm disabled:opacity-40 ${on ? 'border-emerald-500 bg-emerald-950 text-emerald-300' : 'border-slate-700 bg-slate-950 text-slate-300'}`}
+              >
+                {MUSCLE_LABEL[m]}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="mt-3">
+        <p className="mb-1 text-sm text-slate-400">빼고 싶은 종목 (아프거나 불편한 곳)</p>
+        <div className="flex flex-wrap gap-1.5">
+          {AVOID_PRESETS.map((p) => {
+            const on = presets.includes(p.id);
+            return (
+              <button
+                key={p.id}
+                type="button"
+                aria-pressed={on}
+                title={p.desc}
+                onClick={() => setPresets((ps) => toggle(ps, p.id))}
+                className={`rounded-full border px-3 py-1 text-sm ${on ? 'border-rose-400 bg-rose-950 text-rose-300' : 'border-slate-700 bg-slate-950 text-slate-300'}`}
+              >
+                {p.label}
+              </button>
+            );
+          })}
+        </div>
+        {presets.length > 0 && (
+          <p className="mt-1 text-xs text-slate-500">{AVOID_PRESETS.filter((p) => presets.includes(p.id)).map((p) => `${p.label}: ${p.desc}`).join(' · ')}</p>
+        )}
+        {customAvoid.length > 0 && (
+          <p className="mt-1 flex flex-wrap gap-1 text-xs">
+            {customAvoid.map((id) => (
+              <button key={id} type="button" aria-label={`${exName(id)} 다시 넣기`} onClick={() => setCustomAvoid((c) => c.filter((x) => x !== id))} className="rounded-full border border-rose-400 bg-rose-950 px-2 py-0.5 text-rose-300">
+                {exName(id)} ✕
+              </button>
+            ))}
+          </p>
+        )}
+        <p className="mt-1 text-xs text-slate-500">하나씩 빼려면 아래 ① 읽은 내용에서 종목 옆 "빼기"를 누르세요.</p>
+      </div>
       <Button className="mt-2 w-full" onClick={read} disabled={!text.trim()}>
         읽고 점검하기
       </Button>
@@ -118,7 +185,19 @@ export function RoutineImport({ onApplied }: { onApplied?: () => void }) {
                   {d.entries.map((e, ei) => (
                     <li key={ei} className="flex flex-wrap items-center justify-between gap-1">
                       {e.exerciseId ? (
-                        <span className="font-medium">{exName(e.exerciseId)}</span>
+                        <span className="flex items-center gap-2 font-medium">
+                          <span className={avoid.includes(e.exerciseId) ? 'text-rose-300 line-through' : ''}>{exName(e.exerciseId)}</span>
+                          {!AVOID_PRESETS.some((p) => presets.includes(p.id) && p.ids.includes(e.exerciseId!)) && (
+                            <button
+                              type="button"
+                              aria-label={`${exName(e.exerciseId)} ${customAvoid.includes(e.exerciseId) ? '다시 넣기' : '빼기'}`}
+                              onClick={() => setCustomAvoid((c) => toggle(c, e.exerciseId!))}
+                              className="rounded border border-slate-700 px-1.5 text-xs font-normal text-slate-400"
+                            >
+                              {customAvoid.includes(e.exerciseId) ? '되돌리기' : '빼기'}
+                            </button>
+                          )}
+                        </span>
                       ) : (
                         <select aria-label={`${e.rawName} 종목 선택`} value="" onChange={(ev) => setExercise(di, ei, ev.target.value)} className="h-9 rounded-lg border border-amber-600 bg-slate-950 px-2 text-base">
                           <option value="">"{e.rawName}" → 종목 선택</option>
@@ -183,9 +262,26 @@ export function RoutineImport({ onApplied }: { onApplied?: () => void }) {
               <section>
                 <h3 className="mb-2 text-sm font-semibold">③ 수정안 ({audit.changes.length}개)</h3>
                 {audit.changes.length === 0 && <p className="text-sm text-slate-400">고칠 곳이 없습니다.</p>}
+                {rejected.length > 0 && (
+                  <p className="mb-2 flex items-center justify-between rounded-lg bg-slate-950/60 px-3 py-1.5 text-xs text-slate-400">
+                    제외한 수정안 {rejected.length}개 (적용 안 함)
+                    <button type="button" className="underline" onClick={() => setRejected([])}>
+                      모두 되돌리기
+                    </button>
+                  </p>
+                )}
                 <ul className="space-y-2">
-                  {audit.changes.map((c, i) => (
-                    <li key={i} className="rounded-xl bg-slate-950/60 px-3 py-2 text-sm">
+                  {audit.changes.map((c) => (
+                    <li key={c.id} className="relative rounded-xl bg-slate-950/60 py-2 pr-10 pl-3 text-sm">
+                      <button
+                        type="button"
+                        aria-label={`수정안 제외: ${KIND_LABEL[c.kind]} ${c.day} ${exName(c.exerciseId)}`}
+                        title="이 수정안은 적용하지 않기"
+                        onClick={() => setRejected((r) => [...r, c.id])}
+                        className="absolute top-1.5 right-1.5 h-8 w-8 rounded-lg text-slate-500 hover:bg-slate-800 hover:text-rose-400"
+                      >
+                        ✕
+                      </button>
                       <p>
                         <Badge tone={c.kind === 'add' ? 'emerald' : c.kind === 'swap' ? 'sky' : 'amber'}>{KIND_LABEL[c.kind]}</Badge> <span className="text-slate-400">{c.day}</span>{' '}
                         <span className="font-medium">

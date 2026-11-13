@@ -367,3 +367,35 @@ test.describe('J7 메모 루틴 가져와서 점검', () => {
     await expect(page.getByText(/상체A|하체A/).first()).toBeVisible();
   });
 });
+
+test.describe('J8 수정안 빼기 · 집중 부위 · 빼고 싶은 종목', () => {
+  test('수정안을 X 하면 적용 목록에서 빠지고, 어깨 보호를 켜면 딥스가 바뀌고, 집중 부위는 5개까지', async ({ page }) => {
+    await page.goto('/#program');
+    await page.getByRole('textbox', { name: '루틴 글' }).fill(
+      '상체A 루틴 (벤치프레스 50*8 4세트, 어시스트딥스 30*9 3세트, 랫풀다운 50*10 4세트) 하체A 루틴 (스쿼트 80*8 4세트, 라잉레그컬 40*8 3세트)',
+    );
+    await page.getByRole('button', { name: '읽고 점검하기' }).click();
+
+    // 수정안 X
+    await expect(page.getByText('라잉 레그 컬 → 시티드 레그 컬')).toBeVisible();
+    await page.getByRole('button', { name: '수정안 제외: 교체 하체A 라잉 레그 컬' }).click();
+    await expect(page.getByText('라잉 레그 컬 → 시티드 레그 컬')).toHaveCount(0);
+    await expect(page.getByText('제외한 수정안 1개')).toBeVisible();
+    await page.getByRole('button', { name: '모두 되돌리기' }).click();
+    await expect(page.getByText('라잉 레그 컬 → 시티드 레그 컬')).toBeVisible();
+
+    // 어깨 보호
+    await page.getByRole('button', { name: '어깨 보호' }).click();
+    await expect(page.getByText(/어시스트 딥스 머신 → /)).toBeVisible();
+
+    // 종목 하나 빼기
+    await page.getByText('하체A · 2종목').click();
+    await page.getByRole('button', { name: '바벨 백스쿼트 빼기' }).click();
+    await expect(page.getByText(/바벨 백스쿼트 → /)).toBeVisible();
+
+    // 집중 부위 5개 제한
+    for (const m of ['가슴', '광배근', '측면 삼각근', '이두', '삼두']) await page.getByRole('group', { name: '집중 부위 선택' }).getByRole('button', { name: m, exact: true }).click();
+    await expect(page.getByRole('group', { name: '집중 부위 선택' }).getByRole('button', { name: '대퇴사두', exact: true })).toBeDisabled();
+    await expect(page.getByText(/집중 부위 측면 삼각근/).first()).toBeVisible();
+  });
+});

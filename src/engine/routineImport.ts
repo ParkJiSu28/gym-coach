@@ -1,8 +1,9 @@
 import { getExercise } from '../domain/exercises';
 import { VOLUME_LANDMARKS } from '../domain/research';
-import { MUSCLES, MUSCLE_LABEL, type Muscle, type Program, type SplitId } from '../domain/types';
+import { MUSCLES, MUSCLE_LABEL, type Exercise, type Muscle, type Program, type SplitId } from '../domain/types';
 import { matchExercise } from './importText';
 import { recommendedRest, type Reason } from './progression';
+import { alternativesFor } from './swap';
 import { dayDurationMin, defaultRepRange, programWeeklyVolume, volumeTarget } from './splits';
 
 /**
@@ -135,7 +136,7 @@ function guessSplit(days: RoutineDay[]): SplitId {
   return days.length <= 3 ? 'full_body' : 'ppl';
 }
 
-export function routineToProgram(days: RoutineDay[], now = Date.now()): Program {
+export function routineToProgram(days: RoutineDay[], now = Date.now(), priorities: Muscle[] = []): Program {
   return {
     name: '내 루틴 (가져옴)',
     splitId: guessSplit(days),
@@ -143,7 +144,7 @@ export function routineToProgram(days: RoutineDay[], now = Date.now()): Program 
     active: true,
     mesoStart: now,
     mesoWeeks: 4,
-    priorities: [],
+    priorities: priorities.slice(0, 5),
     days: days.map((d, i) => ({
       id: `import-${i}`,
       name: d.name,
@@ -164,6 +165,8 @@ export function routineToProgram(days: RoutineDay[], now = Date.now()): Program 
 // ─────────────────────────────── 점검·수정안
 
 export interface RoutineChange {
+  /** 수정안 고유 id — 사용자가 빼면 opts.rejected 로 넘긴다 */
+  id: string;
   kind: 'remove' | 'sets' | 'add' | 'swap' | 'move';
   day: string;
   /** move: 옮겨 갈 루틴 */
@@ -185,12 +188,28 @@ export interface RoutineAudit {
   revised: RoutineDay[];
   /** 루틴별 예상 시간(분): 원래 / 수정안 */
   durations: { name: string; before: number; after: number }[];
+  /** 실제 반영한 집중 부위 (최대 5개) */
+  priorities: Muscle[];
 }
 
 export interface AuditOptions {
   /** 한 번 운동 시간 상한(분). 넘는 루틴은 여유 있는 부위부터 세트를 줄인다 */
   maxMinutes?: number;
+  /** 사용자가 X 한 수정안 id — 적용하지 않는다 */
+  rejected?: string[];
+  /** 집중 부위 (최대 5개): MEV 대신 MAV 하한+2 까지 채우고, 시간을 줄일 때도 지킨다 */
+  priorities?: Muscle[];
+  /** 빼고 싶은 종목 id (부상·불편) — 같은 주동근의 다른 종목으로 바꾸거나 뺀다 */
+  avoid?: string[];
 }
+
+/** 관절 보호 묶음: 아프거나 불편한 부위에 부담이 큰 종목 */
+export const AVOID_PRESETS: { id: string; label: string; desc: string; ids: string[] }[] = [
+  { id: 'shoulder', label: '어깨 보호', desc: '머리 위 프레스·딥스 빼기', ids: ['ohp', 'db_shoulder_press', 'smith_ohp', 'machine_shoulder_press', 'dips', 'assisted_dip'] },
+  { id: 'lower_back', label: '허리 보호', desc: '데드리프트·바벨 로우·백스쿼트 빼기', ids: ['deadlift', 'rdl', 'barbell_row', 't_bar_row', 'squat'] },
+  { id: 'knee', label: '무릎 보호', desc: '스플릿 스쿼트·레그 익스텐션·펜듈럼 빼기', ids: ['bulgarian_split_squat', 'leg_extension', 'front_squat', 'pendulum_squat'] },
+  { id: 'elbow', label: '팔꿈치 보호', desc: '라잉·오버헤드 익스텐션 빼기', ids: ['skull_crusher', 'overhead_triceps_ext', 'close_grip_bench'] },
+];
 
 const VOL_CITES = ['schoenfeld2017volume', 'pelland2024', 'israetel_landmarks'];
 const MAX_SETS_PER_EXERCISE = 5;
@@ -206,6 +225,10 @@ const ADD_PICK: Partial<Record<Muscle, string>> = {
   hamstrings: 'seated_leg_curl',
   glutes: 'hip_thrust',
   calves: 'standing_calf_raise',
+  front_delts: 'machine_shoulder_press',
+  abs: 'cable_crunch',
+  forearms: 'wrist_curl',
+  lower_back: 'back_extension',
 };
 const LOWER: Muscle[] = ['quads', 'hamstrings', 'glutes', 'calves'];
 
@@ -235,6 +258,41 @@ export function auditRoutine(days: RoutineDay[], opts: AuditOptions = {}): Routi
   const before = volume(days);
   const changes: RoutineChange[] = [];
   const notes: Reason[] = [];
+  const R = new Set(opts.rejected ?? []);
+  const P = (opts.priorities ?? []).slice(0, 5);
+  const A = new Set(opts.avoid ?? []);
+  const floor = (m: Muscle) => (P.includes(m) ? volumeTarget(m, P) : VOLUME_LANDMARKS[m].mev);
+  const push = (c: Omit<RoutineChange, 'id'>, id: string) => changes.push({ ...c, id });
+
+  // 0) 빼고 싶은 종목: 같은 주동근의 다른 종목(뺀 목록 제외)으로 바꾸고, 없으면 뺀다. 무게는 새로 찾기
+  for (const d of revised) {
+    for (const e of [...d.entries]) {
+      if (!e.exerciseId || !A.has(e.exerciseId)) continue;
+      const id = `avoid:${d.name}:${e.exerciseId}`;
+      if (R.has(id)) continue;
+      // 그날 이미 같은 주동근의 복합 운동이 있으면 그와 겹치는 복합 운동으로는 바꾸지 않는다 (바로 중복이 되므로)
+      const dupCompound = (x: Exercise) => x.compound && d.entries.some((y) => y !== e && known(y) && getExercise(y.exerciseId!)!.compound && primaryKey(y.exerciseId!) === primaryKey(x.id));
+      const alt = alternativesFor(e.exerciseId, 40).find((x) => !A.has(x.id) && !d.entries.some((y) => y.exerciseId === x.id) && !dupCompound(x));
+      const from = e.exerciseId;
+      if (alt) {
+        const n = nWork(e);
+        const [, repMax] = defaultRepRange(alt);
+        Object.assign(e, { exerciseId: alt.id, rawName: alt.name, added: true, sets: Array.from({ length: n }, () => ({ weight: 0, reps: repMax })) });
+        push({ kind: 'swap', day: d.name, exerciseId: from, toExerciseId: alt.id, text: `빼고 싶은 종목 — 같은 주동근을 쓰는 ${alt.name}(으)로 ${n}세트 (무게는 처음에 가볍게 찾기)`, citations: ['kassiano2022'] }, id);
+      } else {
+        d.entries = d.entries.filter((x) => x !== e);
+        push({ kind: 'remove', day: d.name, exerciseId: from, text: '빼고 싶은 종목 — 대신할 종목이 없어 빼기 (다른 종목에서 함께 자극됨)', citations: ['kassiano2022'] }, id);
+      }
+    }
+  }
+  /** 새로 넣을 종목: 기본 추천 → 뺀 종목이거나 그날 이미 있으면 같은 주동근 대안 */
+  const pickFor = (m: Muscle, d: RoutineDay): string | undefined => {
+    const base = ADD_PICK[m];
+    if (!base) return undefined;
+    const ok = (id: string) => !A.has(id) && !d.entries.some((e) => e.exerciseId === id) && getExercise(id)?.muscles[m] === 1;
+    if (ok(base)) return base;
+    return alternativesFor(base, 40).find((x) => ok(x.id))?.id;
+  };
 
   // 1) MRV 초과 부위: 같은 세션에 주동근이 같은 복합 운동이 겹치면 하나 뺀다 (세트 적은 쪽, 세션당 1개)
   for (const m of MUSCLES) {
@@ -251,15 +309,17 @@ export function auditRoutine(days: RoutineDay[], opts: AuditOptions = {}): Routi
       const victim = [...group].sort((a, b) => nWork(a) - nWork(b) || group.indexOf(b) - group.indexOf(a))[0]!;
       const keep = group.find((e) => e !== victim)!;
       const trial = revised.map((x) => (x === d ? { ...x, entries: x.entries.filter((e) => e !== victim) } : x));
-      if (volume(trial)[m] < l.mavLow) continue;
+      if (volume(trial)[m] < Math.max(l.mavLow, floor(m))) continue;
+      const cid = `dup:${d.name}:${victim.exerciseId}`;
+      if (R.has(cid)) continue;
       d.entries = d.entries.filter((e) => e !== victim);
-      changes.push({
+      push({
         kind: 'remove',
         day: d.name,
         exerciseId: victim.exerciseId!,
         text: `${MUSCLE_LABEL[m]} 주 ${before[m]}세트로 회복 한계(MRV ${l.mrv}) 초과 — 같은 날 비슷한 동작(${exName(keep.exerciseId!)})이 있어 ${exName(victim.exerciseId!)} 빼기`,
         citations: VOL_CITES,
-      });
+      }, cid);
     }
   }
 
@@ -269,7 +329,7 @@ export function auditRoutine(days: RoutineDay[], opts: AuditOptions = {}): Routi
     const l = VOLUME_LANDMARKS[m];
     for (let guard = 0; guard < 40 && volume(revised)[m] > l.mrv; guard++) {
       // 그 부위가 유일한 주동근인 종목만 줄인다 (스쿼트·데드를 둔근 때문에 줄이지 않도록)
-      const cands = revised.flatMap((d) => d.entries.filter((e) => hits(e, m) && primaryKey(e.exerciseId!) === m && nWork(e) > 2).map((e) => ({ d, e })));
+      const cands = revised.flatMap((d) => d.entries.filter((e) => hits(e, m) && primaryKey(e.exerciseId!) === m && nWork(e) > 2 && !R.has(`mrv:${d.name}:${e.exerciseId}`)).map((e) => ({ d, e })));
       if (cands.length === 0) break;
       cands.sort((a, b) => Number(getExercise(a.e.exerciseId!)!.compound) - Number(getExercise(b.e.exerciseId!)!.compound) || nWork(b.e) - nWork(a.e));
       const { d, e } = cands[0]!;
@@ -280,27 +340,29 @@ export function auditRoutine(days: RoutineDay[], opts: AuditOptions = {}): Routi
 
   // 3) 라잉 레그컬만 있으면 하나를 시티드로 (Maeo 2021: 늘어난 자세의 시티드가 햄스트링 비대 더 큼)
   const ids = revised.flatMap((d) => d.entries.map((e) => e.exerciseId));
-  if (ids.includes('lying_leg_curl') && !ids.includes('seated_leg_curl')) {
-    const d = revised.find((x) => x.entries.some((e) => e.exerciseId === 'lying_leg_curl'))!;
+  const lyingDay = revised.find((x) => x.entries.some((e) => e.exerciseId === 'lying_leg_curl'));
+  if (lyingDay && !ids.includes('seated_leg_curl') && !A.has('seated_leg_curl') && !R.has(`seated:${lyingDay.name}`)) {
+    const d = lyingDay;
     d.entries.find((x) => x.exerciseId === 'lying_leg_curl')!.exerciseId = 'seated_leg_curl';
-    changes.push({
+    push({
       kind: 'swap',
       day: d.name,
       exerciseId: 'lying_leg_curl',
       toExerciseId: 'seated_leg_curl',
       text: '엉덩이를 굽혀 햄스트링이 늘어난 자세로 하는 시티드 레그컬이 라잉보다 비대 효과가 컸음 — 한 번은 시티드로 (처음엔 무게를 낮춰서)',
       citations: ['maeo2021'],
-    });
+    }, `seated:${d.name}`);
   }
 
   // 4) MEV 미만: 기존 종목 세트 추가(종목당 최대 5세트) → 없으면 새 종목 3세트
   const raised = new Map<RoutineEntry, { day: string; from: number }>();
   for (const m of MUSCLES) {
     const l = VOLUME_LANDMARKS[m];
-    if (l.mev === 0 || volume(revised)[m] >= l.mev) continue;
-    const target = volumeTarget(m, []);
+    const focus = P.includes(m);
+    if (focus ? volume(revised)[m] >= floor(m) : l.mev === 0 || volume(revised)[m] >= l.mev) continue;
+    const target = volumeTarget(m, P);
     for (let guard = 0; guard < 20 && volume(revised)[m] < target; guard++) {
-      const cands = revised.flatMap((d) => d.entries.filter((e) => hits(e, m) && nWork(e) < MAX_SETS_PER_EXERCISE).map((e) => ({ d, e })));
+      const cands = revised.flatMap((d) => d.entries.filter((e) => hits(e, m) && nWork(e) < MAX_SETS_PER_EXERCISE && !R.has(`mev:${d.name}:${e.exerciseId}`)).map((e) => ({ d, e })));
       if (cands.length > 0) {
         cands.sort((a, b) => nWork(a.e) - nWork(b.e));
         const { d, e } = cands[0]!;
@@ -308,21 +370,23 @@ export function auditRoutine(days: RoutineDay[], opts: AuditOptions = {}): Routi
         e.sets.push({ ...workingSets(e.sets).at(-1)! });
         continue;
       }
-      const pick = ADD_PICK[m];
-      if (!pick) break;
       const pool = revised.filter((d) => (LOWER.includes(m) ? /하체|레그/.test(d.name) : /상체|가슴|등|어깨|팔/.test(d.name)));
       const d = [...(pool.length ? pool : revised)].sort((a, b) => daySets(a) - daySets(b))[0]!;
+      const pick = pickFor(m, d);
+      if (!pick || R.has(`add:${m}:${pick}`)) break;
       const ex = getExercise(pick)!;
       const [, repMax] = defaultRepRange(ex);
       d.entries.push({ rawName: ex.name, exerciseId: pick, sets: Array.from({ length: 3 }, () => ({ weight: 0, reps: repMax })), added: true });
-      changes.push({
+      push({
         kind: 'add',
         day: d.name,
         exerciseId: pick,
         to: 3,
-        text: `${MUSCLE_LABEL[m]} 주 ${before[m]}세트로 최소 유효량(MEV ${l.mev}) 미만 — ${ex.name} 3세트 추가`,
+        text: focus
+          ? `집중 부위 ${MUSCLE_LABEL[m]}: 주 ${before[m]}세트 → 목표 ${target}세트 — ${ex.name} 3세트 추가`
+          : `${MUSCLE_LABEL[m]} 주 ${before[m]}세트로 최소 유효량(MEV ${l.mev}) 미만 — ${ex.name} 3세트 추가`,
         citations: VOL_CITES,
-      });
+      }, `add:${m}:${pick}`);
     }
   }
 
@@ -330,10 +394,21 @@ export function auditRoutine(days: RoutineDay[], opts: AuditOptions = {}): Routi
     `${MUSCLES.filter((x) => hits(e, x) && cond(x)).map((x) => `${MUSCLE_LABEL[x]} 주 ${before[x]}세트(${label(x)})`).join(', ')} — ${exName(e.exerciseId!)} ${from}→${nWork(e)}세트`;
   for (const [e, c] of reduced) {
     if (nWork(e) === c.from) continue;
-    changes.push({ kind: 'sets', day: c.day, exerciseId: e.exerciseId!, from: c.from, to: nWork(e), text: setText(e, c.from, (x) => before[x] > VOLUME_LANDMARKS[x].mrv, (x) => `MRV ${VOLUME_LANDMARKS[x].mrv} 초과`), citations: VOL_CITES });
+    push({ kind: 'sets', day: c.day, exerciseId: e.exerciseId!, from: c.from, to: nWork(e), text: setText(e, c.from, (x) => before[x] > VOLUME_LANDMARKS[x].mrv, (x) => `MRV ${VOLUME_LANDMARKS[x].mrv} 초과`), citations: VOL_CITES }, `mrv:${c.day}:${e.exerciseId}`);
   }
   for (const [e, c] of raised) {
-    changes.push({ kind: 'sets', day: c.day, exerciseId: e.exerciseId!, from: c.from, to: nWork(e), text: setText(e, c.from, (x) => before[x] < VOLUME_LANDMARKS[x].mev, (x) => `MEV ${VOLUME_LANDMARKS[x].mev} 미만`), citations: VOL_CITES });
+    push(
+      {
+        kind: 'sets',
+        day: c.day,
+        exerciseId: e.exerciseId!,
+        from: c.from,
+        to: nWork(e),
+        text: setText(e, c.from, (x) => before[x] < floor(x), (x) => (P.includes(x) ? `집중 부위 목표 ${volumeTarget(x, P)}` : `MEV ${VOLUME_LANDMARKS[x].mev} 미만`)),
+        citations: VOL_CITES,
+      },
+      `mev:${c.day}:${e.exerciseId}`,
+    );
   }
 
   // 5) 같은 부위 날(하체A·하체B 등) 사이에 한 부위 직접 세트가 4세트 이상 차이 나면 종목을 옮겨 고르게
@@ -355,7 +430,7 @@ export function auditRoutine(days: RoutineDay[], opts: AuditOptions = {}): Routi
       if (!best) break;
       const { m, h, l, diff } = best;
       const cands = h.entries
-        .filter((e) => known(e) && primaryKey(e.exerciseId!) === m && !l.entries.some((x) => x.exerciseId === e.exerciseId))
+        .filter((e) => known(e) && primaryKey(e.exerciseId!) === m && !l.entries.some((x) => x.exerciseId === e.exerciseId) && !R.has(`move:${h.name}:${e.exerciseId}`))
         .map((e) => ({ e, gap: Math.abs(diff - 2 * nWork(e)), iso: !getExercise(e.exerciseId!)!.compound }))
         .filter((c) => c.gap < diff)
         .sort((a, b) => Number(b.iso) - Number(a.iso) || a.gap - b.gap);
@@ -367,14 +442,14 @@ export function auditRoutine(days: RoutineDay[], opts: AuditOptions = {}): Routi
       const [a, b] = [direct(h, m), direct(l, m)];
       h.entries = h.entries.filter((e) => e !== pick.e);
       l.entries.push(pick.e);
-      changes.push({
+      push({
         kind: 'move',
         day: h.name,
         toDay: l.name,
         exerciseId: pick.e.exerciseId!,
         text: `${MUSCLE_LABEL[m]} 직접 세트가 ${h.name} ${a}세트 / ${l.name} ${b}세트로 한쪽에 몰림 — ${exName(pick.e.exerciseId!)}를 ${l.name}로 옮겨 ${direct(h, m)} / ${direct(l, m)}세트로 고르게 (주 2회 고른 자극)`,
         citations: ['schoenfeld2016freq', 'israetel_landmarks'],
-      });
+      }, `move:${h.name}:${pick.e.exerciseId}`);
     }
   }
 
@@ -387,10 +462,10 @@ export function auditRoutine(days: RoutineDay[], opts: AuditOptions = {}): Routi
       for (let guard = 0; guard < 80 && dayMin(d) > max; guard++) {
         const vol = volume(revised);
         const slack = (e: RoutineEntry, n: number) =>
-          Math.min(...MUSCLES.filter((m) => hits(e, m)).map((m) => vol[m] - n - VOLUME_LANDMARKS[m].mev));
+          Math.min(...MUSCLES.filter((m) => hits(e, m)).map((m) => vol[m] - n - floor(m)));
         // 고립 종목부터 줄이고, 복합 종목은 세트당 자극이 커서 3세트까지만 (그래도 넘으면 2세트까지)
         const iso = (e: RoutineEntry) => !getExercise(e.exerciseId!)!.compound;
-        const ok = (e: RoutineEntry, floor: number) => known(e) && hits1(e) && nWork(e) > floor && slack(e, 1) >= 0;
+        const ok = (e: RoutineEntry, min: number) => known(e) && hits1(e) && nWork(e) > min && slack(e, 1) >= 0 && !R.has(`time:${d.name}:${e.exerciseId}`);
         const order = (a: RoutineEntry, b: RoutineEntry) => Number(iso(b)) - Number(iso(a)) || slack(b, 1) - slack(a, 1) || nWork(b) - nWork(a);
         let sets = d.entries.filter((e) => ok(e, iso(e) ? 2 : 3)).sort(order);
         if (!sets[0]) sets = d.entries.filter((e) => ok(e, 2)).sort(order);
@@ -401,7 +476,7 @@ export function auditRoutine(days: RoutineDay[], opts: AuditOptions = {}): Routi
           continue;
         }
         const drop = d.entries
-          .filter((e) => known(e) && hits1(e) && !getExercise(e.exerciseId!)!.compound && slack(e, nWork(e)) >= 0)
+          .filter((e) => known(e) && hits1(e) && !getExercise(e.exerciseId!)!.compound && slack(e, nWork(e)) >= 0 && !R.has(`timedrop:${d.name}:${e.exerciseId}`))
           .sort((a, b) => slack(b, nWork(b)) - slack(a, nWork(a)));
         if (!drop[0]) {
           notes.push({ text: `${d.name}: 최소 유효량(MEV)을 지키면서 ${max}분 안에 맞출 수 없음 (현재 약 ${dayMin(d)}분) — 휴식을 줄이거나 슈퍼세트로 묶으세요`, citations: ['singer2024', 'israetel_landmarks'] });
@@ -410,13 +485,13 @@ export function auditRoutine(days: RoutineDay[], opts: AuditOptions = {}): Routi
         const e = drop[0];
         cut.delete(e);
         d.entries = d.entries.filter((x) => x !== e);
-        changes.push({ kind: 'remove', day: d.name, exerciseId: e.exerciseId!, text: `${max}분 맞추기 — ${exName(e.exerciseId!)} 빼도 관련 부위 주간 세트가 최소 유효량 이상 유지`, citations: VOL_CITES });
+        push({ kind: 'remove', day: d.name, exerciseId: e.exerciseId!, text: `${max}분 맞추기 — ${exName(e.exerciseId!)} 빼도 관련 부위 주간 세트가 최소 유효량 이상 유지`, citations: VOL_CITES }, `timedrop:${d.name}:${e.exerciseId}`);
       }
     }
     for (const [e, c] of cut) {
       const vol = volume(revised);
-      const ms = MUSCLES.filter((m) => hits(e, m)).map((m) => `${MUSCLE_LABEL[m]} 주 ${vol[m]}세트(MEV ${VOLUME_LANDMARKS[m].mev})`);
-      changes.push({ kind: 'sets', day: c.day, exerciseId: e.exerciseId!, from: c.from, to: nWork(e), text: `${max}분 맞추기 — 여유 있는 부위부터: ${ms.join(', ')} 유지하며 ${exName(e.exerciseId!)} ${c.from}→${nWork(e)}세트`, citations: VOL_CITES });
+      const ms = MUSCLES.filter((m) => hits(e, m)).map((m) => `${MUSCLE_LABEL[m]} 주 ${vol[m]}세트(${P.includes(m) ? `집중 목표 ${floor(m)}` : `MEV ${VOLUME_LANDMARKS[m].mev}`})`);
+      push({ kind: 'sets', day: c.day, exerciseId: e.exerciseId!, from: c.from, to: nWork(e), text: `${max}분 맞추기 — 여유 있는 부위부터: ${ms.join(', ')} 유지하며 ${exName(e.exerciseId!)} ${c.from}→${nWork(e)}세트`, citations: VOL_CITES }, `time:${c.day}:${e.exerciseId}`);
     }
   }
 
@@ -463,5 +538,5 @@ export function auditRoutine(days: RoutineDay[], opts: AuditOptions = {}): Routi
     d.entries.filter((e) => known(e) && e.sets.some((s) => s.weight > 0)).map((e) => ({ ...nextTarget(e.exerciseId!, e.sets), day: d.name })),
   );
 
-  return { before, after, changes, notes, targets, revised, durations: days.map((d, i) => ({ name: d.name, before: dayMin(d), after: dayMin(revised[i]!) })) };
+  return { before, after, changes, notes, targets, revised, priorities: P, durations: days.map((d, i) => ({ name: d.name, before: dayMin(d), after: dayMin(revised[i]!) })) };
 }
