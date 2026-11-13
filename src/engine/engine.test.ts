@@ -375,3 +375,13 @@ describe('splits', () => {
     expect(nextProgramDay(p, sessions.slice(0, 1))!.id).toBe(p.days[1]!.id);
   });
 });
+
+describe('suggestNext — 가져온 루틴의 시작 무게', () => {
+  it('기록이 없어도 startWeight 가 있으면 그 무게·반복으로 처방', async () => {
+    const { suggestNext } = await import('./progression');
+    const { getExercise } = await import('../domain/exercises');
+    const s = suggestNext({ exercise: getExercise('bench_press')!, history: [], repMin: 6, repMax: 10, targetRir: 2, plannedSets: 4, startWeight: 50, startReps: 9 });
+    expect(s).toMatchObject({ action: 'start', weight: 50, repsTarget: 9 });
+    expect(s.reasons[0]!.text).toContain('가져온 루틴');
+  });
+});

@@ -156,3 +156,41 @@ describe('routineToProgram', () => {
     expect(p.days[2]!.exercises.find((e) => e.exerciseId === 'barbell_row')!.sets).toBe(3);
   });
 });
+
+describe('목표 무게가 루틴에 들어감', () => {
+  it('routineToProgram 은 다음 목표 무게·반복을 targetWeight/targetReps 로 담음', () => {
+    const p = routineToProgram(parseRoutineText('상체A 루틴 (벤치프레스 50*8 5세트)'), 1000);
+    expect(p.days[0]!.exercises[0]).toMatchObject({ targetWeight: 50, targetReps: 9 });
+  });
+  it('수정안에서 새로 넣은 종목은 무게 없음', () => {
+    const a = auditRoutine(parseRoutineText('벤치프레스 60*8 3세트'));
+    const p = routineToProgram(a.revised, 1000);
+    const added = p.days[0]!.exercises.find((e) => e.exerciseId !== 'bench_press')!;
+    expect(added.targetWeight).toBeUndefined();
+  });
+});
+
+describe('같은 부위 날(하체A·하체B) 사이 고르게 배분', () => {
+  const text = '하체A 루틴 (레그익스텐션 50*12 4세트, 핵스쿼트 100*10 4세트, 시티드레그컬 40*12 3세트) 하체B 루틴 (데드리프트 100*6 3세트, 시티드레그컬 40*12 3세트)';
+  const direct = (days: ReturnType<typeof parseRoutineText>, name: string, ids: string[]) =>
+    days.find((d) => d.name === name)!.entries.filter((e) => ids.includes(e.exerciseId!)).reduce((s, e) => s + workingSets(e.sets).length, 0);
+
+  it('한쪽에 몰린 대퇴사두 고립 종목을 다른 날로 옮김', () => {
+    const a = auditRoutine(parseRoutineText(text));
+    expect(a.changes).toContainEqual(expect.objectContaining({ kind: 'move', day: '하체A', toDay: '하체B', exerciseId: 'leg_extension' }));
+    const q = ['leg_extension', 'hack_squat'];
+    expect(Math.abs(direct(a.revised, '하체A', q) - direct(a.revised, '하체B', q))).toBeLessThan(8);
+  });
+  it('옮기기에도 근거(빈도 연구)가 붙음', () => {
+    const a = auditRoutine(parseRoutineText(text));
+    expect(a.changes.find((c) => c.kind === 'move')!.citations).toContain('schoenfeld2016freq');
+  });
+  it('상체 ↔ 하체 사이에는 옮기지 않음', () => {
+    const a = auditRoutine(parseRoutineText('상체A 루틴 (벤치프레스 60*8 4세트) 하체A 루틴 (레그익스텐션 50*12 4세트, 핵스쿼트 100*10 4세트)'));
+    expect(a.changes.filter((c) => c.kind === 'move')).toEqual([]);
+  });
+  it('사용자 루틴: 하체A 에 몰린 대퇴사두를 하체B 로 나눔', () => {
+    const a = auditRoutine(parseRoutineText(SAMPLE));
+    expect(a.changes.some((c) => c.kind === 'move' && c.day.startsWith('하체') && c.toDay!.startsWith('하체'))).toBe(true);
+  });
+});
