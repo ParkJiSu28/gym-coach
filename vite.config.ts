@@ -38,7 +38,7 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
     setupFiles: ['fake-indexeddb/auto'],
     coverage: {
-      include: ['src/engine/**', 'src/data/db.ts'],
+      include: ['src/engine/**', 'src/data/db.ts', 'src/data/transfer.ts'],
       thresholds: { lines: 80, functions: 80, branches: 75 },
     },
   },

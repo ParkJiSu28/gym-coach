@@ -56,8 +56,9 @@ describe('createTransferCode / parseTransferCode', () => {
   });
 
   it('기록 200세트도 압축되어 원본 JSON 보다 짧음', async () => {
-    for (let d = 1; d <= 20; d++) {
-      await addManualEntry({ date: day(d), exerciseId: 'bench_press', sets: Array.from({ length: 10 }, () => ({ weight: 80, reps: 8 })) }, NOW, pc);
+    // 오늘(13일) 이전 10일 × 20세트
+    for (let d = 1; d <= 10; d++) {
+      await addManualEntry({ date: day(d), exerciseId: 'bench_press', sets: Array.from({ length: 20 }, () => ({ weight: 80, reps: 8 })) }, NOW, pc);
     }
     const { code, sets } = await createTransferCode({ now: NOW }, pc);
     expect(sets).toBe(200);

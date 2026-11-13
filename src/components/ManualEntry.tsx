@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { addManualEntry, db, deleteExerciseSets } from '../data/db';
 import { allExercises, getExercise } from '../domain/exercises';
 import type { SetLog, WorkoutSession } from '../domain/types';
@@ -32,6 +32,28 @@ export function ManualEntryForm() {
   const [busy, setBusy] = useState(false);
 
   const setRow = (i: number, patch: Partial<Row>) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const addRow = () => setRows((rs) => (rs.length >= 20 ? rs : [...rs, { ...rs.at(-1)! }]));
+
+  // PC 빠른 입력: Enter → 다음 세트 칸(없으면 추가, 값 복사), Ctrl/⌘+Enter → 저장
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [focusRow, setFocusRow] = useState<number | null>(null);
+  useEffect(() => {
+    if (focusRow === null) return;
+    const el = wrapRef.current?.querySelector<HTMLInputElement>(`[aria-label="${focusRow + 1}세트 무게"]`);
+    el?.focus();
+    el?.select();
+    setFocusRow(null);
+  }, [focusRow, rows.length]);
+  const onKey = (i: number, e: KeyboardEvent<HTMLElement>) => {
+    if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+    e.preventDefault();
+    if (e.ctrlKey || e.metaKey) {
+      void save();
+      return;
+    }
+    if (i === rows.length - 1) addRow();
+    setFocusRow(i + 1);
+  };
 
   async function save() {
     setBusy(true);
@@ -53,6 +75,7 @@ export function ManualEntryForm() {
 
   return (
     <Card title="지난 기록 직접 입력">
+      <div ref={wrapRef}>
       <p className="mb-3 text-sm text-slate-400">다른 앱에 있던 기록을 날짜별로 옮겨 적으세요. RIR(실패까지 남은 횟수)은 모르면 "모름"으로 두면 됩니다.</p>
       {/* iOS Safari 의 날짜 칸은 내부 최소 폭 때문에 좁은 칸에서 옆 칸을 덮는다 → 한 줄씩 전체 너비 */}
       <div className="flex flex-col gap-2">
@@ -79,12 +102,19 @@ export function ManualEntryForm() {
         <span className="text-center">RIR</span>
         <span />
         {rows.map((r, i) => (
-          <Row key={i} i={i} row={r} onChange={(p) => setRow(i, p)} onRemove={rows.length > 1 ? () => setRows((rs) => rs.filter((_, j) => j !== i)) : undefined} />
+          <Row
+            key={i}
+            i={i}
+            row={r}
+            onChange={(p) => setRow(i, p)}
+            onKeyDown={(e) => onKey(i, e)}
+            onRemove={rows.length > 1 ? () => setRows((rs) => rs.filter((_, j) => j !== i)) : undefined}
+          />
         ))}
       </div>
 
       <div className="mt-3 flex gap-2">
-        <Button variant="subtle" className="flex-1" onClick={() => setRows((rs) => (rs.length >= 20 ? rs : [...rs, { ...rs.at(-1)! }]))}>
+        <Button variant="subtle" className="flex-1" onClick={addRow}>
           세트 추가
         </Button>
         <Button className="flex-1" onClick={save} disabled={busy}>
@@ -101,21 +131,36 @@ export function ManualEntryForm() {
             {msg.text}
           </p>
         ))}
+      <p className="mt-2 hidden text-xs text-slate-500 sm:block">⌨ Enter: 다음 세트 · Ctrl+Enter: 저장</p>
+      </div>
     </Card>
   );
 }
 
-function Row({ i, row, onChange, onRemove }: { i: number; row: Row; onChange: (p: Partial<Row>) => void; onRemove?: () => void }) {
+function Row({
+  i,
+  row,
+  onChange,
+  onKeyDown,
+  onRemove,
+}: {
+  i: number;
+  row: Row;
+  onChange: (p: Partial<Row>) => void;
+  onKeyDown: (e: KeyboardEvent<HTMLElement>) => void;
+  onRemove?: () => void;
+}) {
   const n = i + 1;
   return (
     <>
       <span className="text-center text-sm text-slate-400">{n}</span>
-      <input aria-label={`${n}세트 무게`} type="number" inputMode="decimal" value={row.weight} onChange={(e) => onChange({ weight: Number(e.target.value) })} className={inputCls} />
-      <input aria-label={`${n}세트 반복`} type="number" inputMode="numeric" value={row.reps} onChange={(e) => onChange({ reps: Number(e.target.value) })} className={inputCls} />
+      <input aria-label={`${n}세트 무게`} type="number" inputMode="decimal" value={row.weight} onChange={(e) => onChange({ weight: Number(e.target.value) })} onKeyDown={onKeyDown} onFocus={(e) => e.currentTarget.select()} className={inputCls} />
+      <input aria-label={`${n}세트 반복`} type="number" inputMode="numeric" value={row.reps} onChange={(e) => onChange({ reps: Number(e.target.value) })} onKeyDown={onKeyDown} onFocus={(e) => e.currentTarget.select()} className={inputCls} />
       <select
         aria-label={`${n}세트 RIR`}
         value={row.rir === null ? '' : String(row.rir)}
         onChange={(e) => onChange({ rir: e.target.value === '' ? null : Number(e.target.value) })}
+        onKeyDown={onKeyDown}
         className={inputCls}
       >
         <option value="">모름</option>
