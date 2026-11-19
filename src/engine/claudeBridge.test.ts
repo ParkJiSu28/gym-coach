@@ -143,3 +143,38 @@ describe('parseRoutinePlan — Claude 가 자주 쓰는 다른 표기', () => {
     expect(plan.skipped).toEqual(['- 이건 읽을 수 없는 줄 6~8']);
   });
 });
+
+describe('buildClaudePrompt — 루틴별 최근 수행 기록 (루틴 수만큼)', () => {
+  const p = {
+    id: 7, name: 'x', splitId: 'upper_lower', createdAt: 0, active: true, mesoStart: 0, mesoWeeks: 4, priorities: [],
+    days: [
+      { id: 'u', name: '상체A', exercises: [{ exerciseId: 'bench_press', sets: 3, repMin: 6, repMax: 10, restSec: 150 }] },
+      { id: 'l', name: '하체A', exercises: [{ exerciseId: 'squat', sets: 3, repMin: 6, repMax: 10, restSec: 180 }] },
+      { id: 'x', name: '팔', exercises: [] },
+    ],
+  } as Program;
+  const S = (id: number, d: number, dayId: string): WorkoutSession => ({ id, startedAt: at(d), endedAt: at(d, 20), programId: 7, dayId });
+  const L = (id: number, sessionId: number, exerciseId: string, weight: number, reps: number, rir: number, est: boolean, restSec?: number): SetLog =>
+    ({ id, sessionId, exerciseId, order: id, weight, reps, rir, rirEstimated: est, restSec, completedAt: at(sessionId) + id * 1000 });
+  const ss = [S(1, 5, 'u'), S(2, 9, 'u'), S(3, 11, 'l')];
+  const st = [
+    L(1, 1, 'bench_press', 50, 8, 2, true),
+    L(2, 2, 'bench_press', 55, 8, 2, false),
+    L(3, 2, 'bench_press', 55, 7, 1, false, 155),
+    L(4, 3, 'squat', 80, 8, 3, true),
+  ];
+  const t = buildClaudePrompt({ sessions: ss, sets: st, now: NOW, program: p });
+  const block = t.slice(t.indexOf('[루틴별 최근 수행 기록]'));
+  it('루틴마다 가장 최근 날짜 하나: 루틴명·날짜·종목·세트·무게·횟수·RIR·휴식', () => {
+    expect(block).toContain('■ 상체A — 11/9');
+    expect(block).not.toContain('11/5');
+    expect(block).toContain('바벨 벤치프레스 (계획 3세트 6-10회, 휴식 150초)');
+    expect(block).toContain('1세트 55kg×8회 RIR 2');
+    expect(block).toContain('2세트 55kg×7회 RIR 1 휴식 2:35');
+    expect(block).toContain('■ 하체A — 11/11');
+    expect(block).toContain('80kg×8회 RIR 3(추정)');
+  });
+  it('수행 기록 없는 루틴은 그렇게 표시', () => {
+    expect(block).toContain('■ 팔 — 아직 수행 기록 없음');
+  });
+});
