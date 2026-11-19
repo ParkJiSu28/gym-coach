@@ -476,3 +476,72 @@ test.describe('J10 Claude 답변이 다른 표기여도 전부 루틴으로', ()
     await expect(page.getByText(/52\.5kg × 6회 × 4세트/)).toBeVisible();
   });
 });
+
+test.describe('J11 운동 중 사용성 (휴식·순서·직접 추가·완료 표시·0 지우기)', () => {
+  async function startTestRoutine(page: Page) {
+    await page.goto('/#program');
+    await page.getByRole('textbox', { name: 'Claude 답변' }).fill(
+      ['### 테스트', '- 바벨 벤치프레스 | 1세트 | 8-10회 | 60kg | 휴식 90초', '- 랫풀다운 | 2세트 | 8-12회 | 50kg | 휴식 120초'].join('\n'),
+    );
+    await page.getByRole('button', { name: '답변 읽기' }).click();
+    await page.getByRole('button', { name: '이 루틴으로 저장' }).click();
+    await nav(page, '오늘');
+    await page.getByRole('button', { name: '테스트 시작' }).click();
+  }
+
+  test('종목마다 휴식을 바꾸면 타이머와 루틴에 남는다', async ({ page }) => {
+    await startTestRoutine(page);
+    const bench = card(page, '바벨 벤치프레스');
+    await expect(bench.getByText('휴식 1:30')).toBeVisible();
+    await bench.getByRole('button', { name: '휴식 늘리기' }).click();
+    await bench.getByRole('button', { name: '휴식 늘리기' }).click();
+    await expect(bench.getByText('휴식 2:00')).toBeVisible();
+    await logSet(page, '바벨 벤치프레스', 60, 8);
+    await expect(page.getByRole('timer')).toContainText('목표 2:00');
+    await page.reload();
+    await expect(card(page, '바벨 벤치프레스').getByText('휴식 2:00')).toBeVisible();
+    await expect(card(page, '랫풀다운').getByText('휴식 2:00')).toBeVisible();
+  });
+
+  test('종목 순서를 위/아래로 바꾼다', async ({ page }) => {
+    await startTestRoutine(page);
+    const headings = page.locator('section h2');
+    await expect(headings.first()).toHaveText('바벨 벤치프레스');
+    await card(page, '랫풀다운').getByRole('button', { name: '위로' }).click();
+    await expect(headings.first()).toHaveText('랫풀다운');
+    await page.reload();
+    await expect(page.locator('section h2').first()).toHaveText('랫풀다운');
+  });
+
+  test('목록에 없는 종목은 검색한 이름 그대로 바로 추가된다', async ({ page }) => {
+    await startTestRoutine(page);
+    await page.getByRole('button', { name: '+ 운동 추가' }).click();
+    await page.getByPlaceholder('운동 이름 검색').fill('나만의 케이블 킥백');
+    await page.getByRole('button', { name: '"나만의 케이블 킥백" 새 종목으로 추가' }).click();
+    await expect(card(page, '나만의 케이블 킥백')).toBeVisible();
+  });
+
+  test('세트를 다 채우면 종목 카드가 한눈에 완료로 바뀌고, 진행 막대가 늘어난다', async ({ page }) => {
+    await startTestRoutine(page);
+    await expect(page.getByText('0/2 종목 완료')).toBeVisible();
+    await logSet(page, '바벨 벤치프레스', 60, 8);
+    const bench = card(page, '바벨 벤치프레스');
+    await expect(bench.getByText('✓ 완료')).toBeVisible();
+    await expect(bench.getByRole('button', { name: /세트 완료/ })).toHaveCount(0);
+    await expect(page.getByText('1/2 종목 완료')).toBeVisible();
+    await bench.getByRole('button', { name: '한 세트 더' }).click();
+    await expect(bench.getByRole('button', { name: /세트 완료/ })).toBeVisible();
+  });
+
+  test('무게·반복 칸의 0 을 지울 수 있다', async ({ page }) => {
+    await startTestRoutine(page);
+    const w = card(page, '바벨 벤치프레스').getByRole('spinbutton', { name: '무게' });
+    await w.fill('0');
+    await w.press('End');
+    await w.press('Backspace');
+    await expect(w).toHaveValue('');
+    await w.pressSequentially('7');
+    await expect(w).toHaveValue('7');
+    await page.goto('/#log');
+  });
+});
