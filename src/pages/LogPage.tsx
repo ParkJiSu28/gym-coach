@@ -35,6 +35,7 @@ export function LogPage({ go }: { go: (t: Tab) => void }) {
   const [extra, setExtra] = useState<string[]>([]);
   const [picker, setPicker] = useState(false);
   const [swapping, setSwapping] = useState<Slot | null>(null);
+  const [ordering, setOrdering] = useState(false);
 
   // 1분 단위(또는 데이터 변경 시)로만 컨텍스트 재계산 — 타이머 매초 갱신과 분리
   const minute = Math.floor(now / 60_000);
@@ -124,7 +125,6 @@ export function LogPage({ go }: { go: (t: Tab) => void }) {
     );
   }
 
-  const elapsedMin = Math.floor((now - open.startedAt) / 60_000);
   const lastSet = sessionSets.at(-1);
   const restOf = (plan: ExercisePlan) => open.rest?.[plan.exercise.id] ?? plan.restSec;
   const lastPlan = plans.find((p) => p.plan.exercise.id === lastSet?.exerciseId)?.plan;
@@ -140,9 +140,9 @@ export function LogPage({ go }: { go: (t: Tab) => void }) {
     if (program?.id && day && slot.plannedId) await db.programs.update(program.id, { days: setDayRest(program, day.id, slot.plannedId, next).days });
   }
 
-  async function move(slot: Slot, dir: -1 | 1) {
+  async function saveOrder(ids: string[]) {
     if (!open?.id) return;
-    const ids = moveId(plans.map((p) => p.slot.id), slot.id, dir);
+    setOrdering(false);
     await setSessionOrder(open.id, ids);
     // 루틴의 날 순서도 같이 바꿔 다음에도 이 순서로
     if (program?.id && day) {
@@ -185,33 +185,44 @@ export function LogPage({ go }: { go: (t: Tab) => void }) {
 
   return (
     <div className="space-y-4">
-      <header className="flex items-end justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{day?.name ?? '자유 운동'}</h1>
-          <p className="text-sm text-slate-400">
-            {elapsedMin}분 경과 · {sessionSets.filter((s) => !s.warmup).length}세트 완료
-          </p>
-          {plans.length > 0 && (
-            <div className="mt-1 flex items-center gap-2">
-              <div className="h-2 w-32 overflow-hidden rounded-full bg-slate-800">
-                <div className="h-full bg-emerald-400 transition-all" style={{ width: `${(doneCount / plans.length) * 100}%` }} />
-              </div>
-              <span className="text-sm font-semibold text-emerald-300 tabular-nums">
-                {doneCount}/{plans.length} 종목 완료
-              </span>
-            </div>
+      <header className="flex items-center justify-between gap-2">
+        <h1 className="text-2xl font-bold">{day?.name ?? '자유 운동'}</h1>
+        <div className="flex gap-2">
+          {plans.length > 1 && (
+            <Button variant="ghost" onClick={() => setOrdering((o) => !o)}>
+              순서 변경
+            </Button>
           )}
+          <Button variant="danger" onClick={discard}>
+            삭제
+          </Button>
         </div>
-        <Button variant="danger" onClick={discard}>
-          삭제
-        </Button>
       </header>
 
-      {lastSet && <RestTimer startedAt={lastSet.completedAt} defaultTarget={restTarget} now={now} setKey={lastSet.id} />}
+      {/* 맨 아래로 내려가도 운동 시간·진행률·휴식 타이머가 보이도록 상단 고정 */}
+      <div role="region" aria-label="운동 진행" className="sticky top-0 z-20 -mx-4 space-y-2 border-b border-slate-800 bg-slate-950/95 px-4 py-2 backdrop-blur">
+        <div className="flex items-center gap-3">
+          <span className="text-2xl font-bold tabular-nums">{fmtDuration(Math.floor((now - open.startedAt) / 1000))}</span>
+          <div className="flex-1">
+            <div className="h-2.5 overflow-hidden rounded-full bg-slate-800">
+              <div className="h-full bg-emerald-400 transition-all" style={{ width: `${plans.length ? (doneCount / plans.length) * 100 : 0}%` }} />
+            </div>
+            <p className="mt-0.5 flex justify-between text-xs tabular-nums">
+              <span className="font-semibold text-emerald-300">
+                {doneCount}/{plans.length} 종목 완료 · {plans.length ? Math.round((doneCount / plans.length) * 100) : 0}%
+              </span>
+              <span className="text-slate-400">{sessionSets.filter((s) => !s.warmup).length}세트</span>
+            </p>
+          </div>
+        </div>
+        {lastSet && <RestTimer startedAt={lastSet.completedAt} defaultTarget={restTarget} now={now} setKey={lastSet.id} />}
+      </div>
+
+      {ordering && <OrderEditor items={plans.map((p) => ({ id: p.slot.id, name: p.plan.exercise.name, done: isDone(p.plan) }))} onSave={saveOrder} onClose={() => setOrdering(false)} />}
 
       {plans.length === 0 && <Empty>아래에서 운동을 추가하세요.</Empty>}
 
-      {plans.map(({ slot, plan }, idx) => (
+      {plans.map(({ slot, plan }) => (
         <div key={slot.id} className="space-y-2">
           <ExerciseLogCard
             plan={plan}
@@ -222,9 +233,6 @@ export function LogPage({ go }: { go: (t: Tab) => void }) {
             onSwap={() => setSwapping(swapping?.id === slot.id ? null : slot)}
             restSec={restOf(plan)}
             onRest={(d) => changeRest(slot, plan, d)}
-            onMove={(d) => move(slot, d)}
-            canUp={idx > 0}
-            canDown={idx < plans.length - 1}
           />
           {swapping?.id === slot.id && <SwapPicker slot={slot} canApplyToRoutine={!!slot.plannedId && !!day} onPick={(to, routine) => doSwap(slot, to, routine)} onClose={() => setSwapping(null)} />}
         </div>
@@ -294,9 +302,6 @@ function ExerciseLogCard({
   onSwap,
   restSec,
   onRest,
-  onMove,
-  canUp,
-  canDown,
 }: {
   plan: ExercisePlan;
   sessionId: number;
@@ -306,9 +311,6 @@ function ExerciseLogCard({
   onSwap: () => void;
   restSec: number;
   onRest: (delta: number) => void;
-  onMove: (dir: -1 | 1) => void;
-  canUp: boolean;
-  canDown: boolean;
 }) {
   const s = plan.suggestion;
   const inc = plan.exercise.increment || 1;
@@ -361,12 +363,6 @@ function ExerciseLogCard({
               {working.length}/{s.sets}세트
             </Badge>
           )}
-          <button type="button" aria-label="위로" disabled={!canUp} onClick={() => onMove(-1)} className="h-8 w-8 rounded-lg border border-slate-700 text-sm disabled:opacity-30">
-            ↑
-          </button>
-          <button type="button" aria-label="아래로" disabled={!canDown} onClick={() => onMove(1)} className="h-8 w-8 rounded-lg border border-slate-700 text-sm disabled:opacity-30">
-            ↓
-          </button>
           <button type="button" onClick={onSwap} className="h-8 rounded-lg border border-slate-700 px-2 text-xs text-slate-200">
             교체
           </button>
@@ -641,6 +637,41 @@ function ExercisePicker({ onPick, onClose }: { onPick: (id: string) => void; onC
           목록에 없는 운동 만들기
         </Button>
       )}
+    </Card>
+  );
+}
+
+// ─────────────────────────────── 순서 변경 (전체 목록에서 한 번에)
+
+function OrderEditor({ items, onSave, onClose }: { items: { id: string; name: string; done: boolean }[]; onSave: (ids: string[]) => void; onClose: () => void }) {
+  const [ids, setIds] = useState(items.map((i) => i.id));
+  const byId = (id: string) => items.find((i) => i.id === id)!;
+  return (
+    <Card title="운동 순서" right={<Button variant="subtle" onClick={onClose}>닫기</Button>} className="border-emerald-700">
+      <p className="mb-2 text-xs text-slate-400">↑ ↓ 로 옮긴 뒤 "순서 저장". 루틴의 순서도 같이 바뀝니다.</p>
+      <ol aria-label="운동 순서" className="space-y-1.5">
+        {ids.map((id, i) => {
+          const it = byId(id);
+          return (
+            <li key={id} className="flex items-center gap-2 rounded-xl bg-slate-950/60 px-3 py-2">
+              <span className="w-6 text-center font-bold text-slate-400 tabular-nums">{i + 1}</span>
+              <span className={`flex-1 ${it.done ? 'text-emerald-300' : ''}`}>
+                {it.name}
+                {it.done ? ' ✓' : ''}
+              </span>
+              <button type="button" aria-label={`${it.name} 위로`} disabled={i === 0} onClick={() => setIds((x) => moveId(x, id, -1))} className="h-10 w-10 rounded-lg bg-slate-800 text-lg disabled:opacity-30">
+                ↑
+              </button>
+              <button type="button" aria-label={`${it.name} 아래로`} disabled={i === ids.length - 1} onClick={() => setIds((x) => moveId(x, id, 1))} className="h-10 w-10 rounded-lg bg-slate-800 text-lg disabled:opacity-30">
+                ↓
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+      <Button className="mt-3 w-full py-3" onClick={() => onSave(ids)}>
+        순서 저장
+      </Button>
     </Card>
   );
 }

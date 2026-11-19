@@ -27,7 +27,7 @@ export function RestTimer({ startedAt, defaultTarget, now, setKey }: { startedAt
     <div
       role="timer"
       aria-live="off"
-      className={`sticky top-2 z-10 rounded-2xl border px-4 py-3 backdrop-blur ${st.done ? 'border-emerald-500 bg-emerald-950/90' : 'border-slate-700 bg-slate-900/90'}`}
+      className={`rounded-2xl border px-4 py-2 backdrop-blur ${st.done ? 'border-emerald-500 bg-emerald-950/90' : 'border-slate-700 bg-slate-900/90'}`}
     >
       <div className="flex items-center justify-between">
         <span className="text-sm text-slate-300">{st.done ? '휴식 끝 — 다음 세트!' : '휴식 중'}</span>
