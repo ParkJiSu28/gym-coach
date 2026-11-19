@@ -79,6 +79,7 @@ export function buildClaudePrompt(input: PromptInput): string {
     L.push('[지금 하는 루틴]');
     for (const d of input.program.days) L.push(`${d.name}: ${d.exercises.map((e) => `${exName(e.exerciseId)} ${e.sets}세트(${e.repMin}-${e.repMax}회)`).join(', ')}`);
     L.push('');
+    L.push(...routineLatestLog(input.program, sessions, input.sets));
   }
 
   L.push('[답변 형식] 루틴을 앱에 그대로 붙여넣을 거라, 루틴 부분은 꼭 아래 형식으로 써 줘. 표나 "4×8-10" 같은 다른 표기 말고 한 종목당 한 줄, 칸은 | 로 구분. 설명은 형식 밖에 자유롭게.');
@@ -277,4 +278,37 @@ export function planToProgram(plan: RoutinePlan, now = Date.now(), priorities: M
         }),
     })),
   };
+}
+
+const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`;
+
+/** 루틴의 날마다 가장 최근에 수행한 세션 하나: 종목·세트·무게·횟수·RIR·실제 휴식 */
+export function routineLatestLog(program: Program, sessions: WorkoutSession[], allSets: SetLog[]): string[] {
+  const L = ['[루틴별 최근 수행 기록] (루틴마다 가장 최근 날짜, 워밍업 제외. 휴식 = 앞 세트 끝난 뒤 쉰 시간)'];
+  for (const d of program.days) {
+    const latest = sessions
+      .filter((s) => s.dayId === d.id && (program.id === undefined || s.programId === program.id))
+      .filter((s) => allSets.some((x) => x.sessionId === s.id && !x.warmup))
+      .sort((a, b) => b.startedAt - a.startedAt)[0];
+    if (!latest) {
+      L.push(`■ ${d.name} — 아직 수행 기록 없음`);
+      continue;
+    }
+    const list = allSets.filter((x) => x.sessionId === latest.id && !x.warmup).sort((a, b) => a.completedAt - b.completedAt);
+    const min = latest.endedAt ? `, ${Math.round((latest.endedAt - latest.startedAt) / 60_000)}분` : '';
+    L.push(`■ ${d.name} — ${md(latest.startedAt)}${min}`);
+    const byEx = new Map<string, SetLog[]>();
+    for (const s of list) byEx.set(s.exerciseId, [...(byEx.get(s.exerciseId) ?? []), s]);
+    for (const [ex, xs] of byEx) {
+      const pe = d.exercises.find((e) => e.exerciseId === ex);
+      const planTxt = pe ? ` (계획 ${pe.sets}세트 ${pe.repMin}-${pe.repMax}회, 휴식 ${pe.restSec}초)` : ' (계획 밖 종목)';
+      L.push(`- ${exName(ex)}${planTxt}`);
+      xs.forEach((x, i) => {
+        const rest = i > 0 && x.restSec !== undefined ? ` 휴식 ${mmss(x.restSec)}` : '';
+        L.push(`  ${i + 1}세트 ${x.weight}kg×${x.reps}회 RIR ${x.rir}${x.rirEstimated ? '(추정)' : ''}${rest}`);
+      });
+    }
+  }
+  L.push('');
+  return L;
 }

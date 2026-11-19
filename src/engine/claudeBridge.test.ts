@@ -166,8 +166,8 @@ describe('buildClaudePrompt — 루틴별 최근 수행 기록 (루틴 수만큼
   const t = buildClaudePrompt({ sessions: ss, sets: st, now: NOW, program: p });
   const block = t.slice(t.indexOf('[루틴별 최근 수행 기록]'));
   it('루틴마다 가장 최근 날짜 하나: 루틴명·날짜·종목·세트·무게·횟수·RIR·휴식', () => {
-    expect(block).toContain('■ 상체A — 11/9');
-    expect(block).not.toContain('11/5');
+    expect(block).toContain('■ 상체A — 11/09');
+    expect(block).not.toContain('11/05');
     expect(block).toContain('바벨 벤치프레스 (계획 3세트 6-10회, 휴식 150초)');
     expect(block).toContain('1세트 55kg×8회 RIR 2');
     expect(block).toContain('2세트 55kg×7회 RIR 1 휴식 2:35');
