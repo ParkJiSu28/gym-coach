@@ -503,11 +503,16 @@ test.describe('J11 운동 중 사용성 (휴식·순서·직접 추가·완료 �
     await expect(card(page, '랫 풀다운').getByText('휴식 2:00')).toBeVisible(); // 다른 종목은 그대로
   });
 
-  test('종목 순서를 위/아래로 바꾼다', async ({ page }) => {
+  test('순서 변경을 누르면 전체 목록에서 한 번에 바꾼다', async ({ page }) => {
     await startTestRoutine(page);
     const headings = page.locator('section h2');
     await expect(headings.first()).toHaveText('바벨 벤치프레스');
-    await card(page, '랫 풀다운').getByRole('button', { name: '위로' }).click();
+    await expect(card(page, '랫 풀다운').getByRole('button', { name: '위로' })).toHaveCount(0);
+    await page.getByRole('button', { name: '순서 변경' }).click();
+    const list = page.getByRole('list', { name: '운동 순서' });
+    await expect(list.getByRole('listitem')).toHaveCount(2);
+    await list.getByRole('button', { name: '랫 풀다운 위로' }).click();
+    await page.getByRole('button', { name: '순서 저장' }).click();
     await expect(headings.first()).toHaveText('랫 풀다운');
     await page.reload();
     await expect(page.locator('section h2').first()).toHaveText('랫 풀다운');
@@ -531,6 +536,15 @@ test.describe('J11 운동 중 사용성 (휴식·순서·직접 추가·완료 �
     await expect(page.getByText('1/2 종목 완료')).toBeVisible();
     await bench.getByRole('button', { name: '한 세트 더' }).click();
     await expect(bench.getByRole('button', { name: /세트 완료/ })).toBeVisible();
+  });
+
+  test('운동 시간과 진행률은 맨 아래로 내려가도 화면 위에 고정', async ({ page }) => {
+    await startTestRoutine(page);
+    const bar = page.getByRole('region', { name: '운동 진행' });
+    await expect(bar).toContainText('0/2 종목 완료');
+    await expect(bar).toContainText(/\d+:\d{2}/);
+    await page.getByRole('button', { name: '운동 종료' }).scrollIntoViewIfNeeded();
+    await expect(bar).toBeInViewport();
   });
 
   test('무게·반복 칸의 0 을 지울 수 있다', async ({ page }) => {
