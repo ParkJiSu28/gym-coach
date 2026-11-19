@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Badge, Button, Card, CitationChip, WhyCard } from '../components/ui';
+import { Badge, Button, Card, CitationChip, WhyCard, fmtDuration } from '../components/ui';
 import { db, saveActiveProgram } from '../data/db';
 import { useActiveProgram, useAllSets, useCheckins, useNow, useSessions } from '../data/hooks';
 import { WeekdayPicker } from '../components/WeekdayPicker';
@@ -13,6 +13,7 @@ import { MUSCLES, MUSCLE_LABEL, type Muscle, type Program, type SplitId } from '
 import { mesoPosition, recommendedRest } from '../engine/progression';
 import { SPLIT_INFO, dayDurationMin, defaultRepRange, generateProgram, programWeeklyVolume, recommendSplit } from '../engine/splits';
 import { volumeStatus } from '../engine/volume';
+import { clampRest, moveInDay } from '../engine/sessionEdit';
 
 export function ProgramPage() {
   const program = useActiveProgram();
@@ -203,7 +204,7 @@ function DayList({ program, editable = false, onChange }: { program: Program; ed
           </p>
           <ul className="space-y-1.5 text-sm">
             {d.exercises.map((pe, ei) => (
-              <li key={`${pe.exerciseId}-${ei}`} className="flex items-center justify-between gap-2">
+              <li key={`${pe.exerciseId}-${ei}`} className="flex flex-wrap items-center justify-between gap-2">
                 <span className="flex-1">
                   {getExercise(pe.exerciseId)?.name ?? pe.exerciseId}
                   {pe.targetWeight !== undefined && (
@@ -213,7 +214,7 @@ function DayList({ program, editable = false, onChange }: { program: Program; ed
                   )}
                 </span>
                 {editable ? (
-                  <span className="flex items-center gap-1 tabular-nums">
+                  <span className="flex flex-wrap items-center gap-1 tabular-nums">
                     <button type="button" aria-label="세트 감소" className="h-7 w-7 rounded bg-slate-800" onClick={() => update((p) => void (p.days[di]!.exercises[ei]!.sets = Math.max(1, pe.sets - 1)))}>
                       −
                     </button>
@@ -224,6 +225,19 @@ function DayList({ program, editable = false, onChange }: { program: Program; ed
                     <span className="w-14 text-right text-slate-400">
                       {pe.repMin}~{pe.repMax}회
                     </span>
+                    <button type="button" aria-label="휴식 줄이기" className="h-7 w-7 rounded bg-slate-800" onClick={() => update((p) => void (p.days[di]!.exercises[ei]!.restSec = clampRest(pe.restSec - 15)))}>
+                      −
+                    </button>
+                    <span className="w-12 text-center text-xs text-slate-400">휴식 {fmtDuration(pe.restSec)}</span>
+                    <button type="button" aria-label="휴식 늘리기" className="h-7 w-7 rounded bg-slate-800" onClick={() => update((p) => void (p.days[di]!.exercises[ei]!.restSec = clampRest(pe.restSec + 15)))}>
+                      +
+                    </button>
+                    <button type="button" aria-label="위로" disabled={ei === 0} className="h-7 w-7 rounded bg-slate-800 disabled:opacity-30" onClick={() => onChange?.(moveInDay(program, d.id, ei, -1))}>
+                      ↑
+                    </button>
+                    <button type="button" aria-label="아래로" disabled={ei === d.exercises.length - 1} className="h-7 w-7 rounded bg-slate-800 disabled:opacity-30" onClick={() => onChange?.(moveInDay(program, d.id, ei, 1))}>
+                      ↓
+                    </button>
                     <button type="button" aria-label="종목 삭제" className="h-7 w-7 text-slate-500 hover:text-rose-400" onClick={() => update((p) => void p.days[di]!.exercises.splice(ei, 1))}>
                       ✕
                     </button>

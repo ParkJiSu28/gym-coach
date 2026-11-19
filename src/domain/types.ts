@@ -66,6 +66,10 @@ export interface WorkoutSession {
   manual?: boolean;
   /** 이번 세션에서 바꾼 종목: 계획 종목 id → 실제 수행 종목 id */
   swaps?: Record<string, string>;
+  /** 이번 세션에서 바꾼 종목 순서 (종목 id) */
+  order?: string[];
+  /** 이번 세션에서 정한 종목별 휴식(초) */
+  rest?: Record<string, number>;
 }
 
 export interface SetLog {

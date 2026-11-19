@@ -1,10 +1,10 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { addManualEntry, db, deleteExerciseSets, deleteSession } from '../data/db';
+import { addManualEntry, createCustomExercise, db, deleteExerciseSets, deleteSession } from '../data/db';
 import { allExercises, getExercise } from '../domain/exercises';
-import type { SetLog, WorkoutSession } from '../domain/types';
+import { MUSCLES, MUSCLE_LABEL, type Muscle, type SetLog, type WorkoutSession } from '../domain/types';
 import { ManualRecordError } from '../engine/records';
-import { Button, Card, fmtDate } from './ui';
+import { Button, Card, NumField, fmtDate } from './ui';
 
 function todayStr(): string {
   const d = new Date();
@@ -24,7 +24,9 @@ const inputCls = 'h-11 w-full min-w-0 rounded-xl border border-slate-700 bg-slat
 
 /** 다른 앱 기록을 손으로 옮겨 적는 폼: 날짜 · 종목 · 세트별 무게/반복(RIR 선택) */
 export function ManualEntryForm() {
-  const exercises = useMemo(() => [...allExercises()].sort((a, b) => a.name.localeCompare(b.name, 'ko')), []);
+  const [exVer, setExVer] = useState(0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- exVer: 직접 추가한 종목 반영
+  const exercises = useMemo(() => [...allExercises()].sort((a, b) => a.name.localeCompare(b.name, 'ko')), [exVer]);
   const [date, setDate] = useState(todayStr);
   const [exerciseId, setExerciseId] = useState('bench_press');
   const [rows, setRows] = useState<Row[]>([{ weight: 20, reps: 10, rir: null }]);
@@ -93,6 +95,12 @@ export function ManualEntryForm() {
             ))}
           </select>
         </label>
+        <CustomExerciseAdd
+          onAdded={(id) => {
+            setExVer((v) => v + 1);
+            setExerciseId(id);
+          }}
+        />
       </div>
 
       <div className="mt-3 grid grid-cols-[2rem_1fr_1fr_1fr_2rem] items-center gap-1.5 text-xs text-slate-500">
@@ -154,8 +162,8 @@ function Row({
   return (
     <>
       <span className="text-center text-sm text-slate-400">{n}</span>
-      <input aria-label={`${n}세트 무게`} type="number" inputMode="decimal" value={row.weight} onChange={(e) => onChange({ weight: Number(e.target.value) })} onKeyDown={onKeyDown} onFocus={(e) => e.currentTarget.select()} className={inputCls} />
-      <input aria-label={`${n}세트 반복`} type="number" inputMode="numeric" value={row.reps} onChange={(e) => onChange({ reps: Number(e.target.value) })} onKeyDown={onKeyDown} onFocus={(e) => e.currentTarget.select()} className={inputCls} />
+      <NumField aria-label={`${n}세트 무게`} inputMode="decimal" value={row.weight} onChange={(v) => onChange({ weight: v })} onKeyDown={onKeyDown} onFocus={(e) => e.currentTarget.select()} className={inputCls} />
+      <NumField aria-label={`${n}세트 반복`} inputMode="numeric" value={row.reps} onChange={(v) => onChange({ reps: v })} onKeyDown={onKeyDown} onFocus={(e) => e.currentTarget.select()} className={inputCls} />
       <select
         aria-label={`${n}세트 RIR`}
         value={row.rir === null ? '' : String(row.rir)}
@@ -264,5 +272,42 @@ function ManualDay({ session, sets }: { session: WorkoutSession; sets: SetLog[] 
         })}
       </ul>
     </li>
+  );
+}
+
+/** 목록에 없는 종목을 이름만 써서 추가 */
+export function CustomExerciseAdd({ onAdded, initialName = '' }: { onAdded: (id: string) => void; initialName?: string }) {
+  const [open, setOpen] = useState(!!initialName);
+  const [name, setName] = useState(initialName);
+  const [muscle, setMuscle] = useState<Muscle>('chest');
+  if (!open)
+    return (
+      <button type="button" className="text-left text-sm text-emerald-300 underline" onClick={() => setOpen(true)}>
+        + 목록에 없는 종목 직접 입력
+      </button>
+    );
+  return (
+    <div className="space-y-2 rounded-xl border border-slate-700 p-2">
+      <input aria-label="새 종목 이름" value={name} onChange={(e) => setName(e.target.value)} placeholder="종목 이름 (예: 케이블 킥백)" className={`${inputCls} text-left`} />
+      <select aria-label="새 종목 주동근" value={muscle} onChange={(e) => setMuscle(e.target.value as Muscle)} className={`${inputCls} text-left`}>
+        {MUSCLES.map((m) => (
+          <option key={m} value={m}>
+            주로 쓰는 부위: {MUSCLE_LABEL[m]}
+          </option>
+        ))}
+      </select>
+      <Button
+        className="w-full"
+        disabled={!name.trim()}
+        onClick={async () => {
+          const id = await createCustomExercise({ name, muscle, compound: false });
+          setOpen(false);
+          setName('');
+          onAdded(id);
+        }}
+      >
+        종목 추가
+      </Button>
+    </div>
   );
 }

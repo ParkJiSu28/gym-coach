@@ -1,7 +1,8 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react';
 import { CITATIONS, EVIDENCE_LABEL } from '../domain/research';
 import type { EvidenceLevel } from '../domain/types';
 import type { Reason } from '../engine/progression';
+import { parseNumDraft } from '../engine/sessionEdit';
 
 export function Card({ title, right, children, className = '' }: { title?: ReactNode; right?: ReactNode; children: ReactNode; className?: string }) {
   return (
@@ -108,23 +109,32 @@ export function Stepper({
   suffix?: string;
 }) {
   const set = (v: number) => onChange(Math.max(min, Math.round(v * 100) / 100));
+  // 입력 중인 글자는 따로 들고 있어야 0 을 지우거나 "62." 처럼 입력할 수 있다
+  const [draft, setDraft] = useState<string | null>(null);
+  const shown = draft ?? (Number.isFinite(value) ? String(value) : '');
   return (
     <label className="flex flex-col gap-1">
       <span className="text-xs text-slate-400">{label}</span>
       <div className="flex items-center rounded-xl border border-slate-700 bg-slate-950">
-        <button type="button" aria-label={`${label} 감소`} className="h-11 w-10 text-lg text-slate-300" onClick={() => set(value - step)}>
+        <button type="button" aria-label={`${label} 감소`} className="h-11 w-10 text-lg text-slate-300" onClick={() => (setDraft(null), set(value - step))}>
           −
         </button>
         <input
           type="number"
           inputMode="decimal"
           aria-label={label}
-          value={Number.isFinite(value) ? value : ''}
-          onChange={(e) => set(Number(e.target.value))}
+          value={shown}
+          onFocus={(e) => e.currentTarget.select()}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            const v = parseNumDraft(e.target.value);
+            if (v !== null) set(v);
+          }}
+          onBlur={() => setDraft(null)}
           className="h-11 w-full min-w-0 bg-transparent text-center text-lg font-semibold tabular-nums outline-none"
         />
         {suffix && <span className="pr-1 text-xs text-slate-500">{suffix}</span>}
-        <button type="button" aria-label={`${label} 증가`} className="h-11 w-10 text-lg text-slate-300" onClick={() => set(value + step)}>
+        <button type="button" aria-label={`${label} 증가`} className="h-11 w-10 text-lg text-slate-300" onClick={() => (setDraft(null), set(value + step))}>
           +
         </button>
       </div>
@@ -151,4 +161,25 @@ export function recoveryTone(pct: number): string {
   if (pct >= 70) return 'bg-lime-500';
   if (pct >= 50) return 'bg-amber-500';
   return 'bg-rose-500';
+}
+
+/** 숫자 입력 칸: 0 을 지워 빈칸으로 두거나 "62." 처럼 쓰는 중간 상태를 허용 */
+export function NumField({ value, onChange, ...rest }: { value: number; onChange: (v: number) => void } & Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'>) {
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <input
+      {...rest}
+      type="number"
+      value={draft ?? (Number.isFinite(value) ? String(value) : '')}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        const v = parseNumDraft(e.target.value);
+        onChange(v ?? 0);
+      }}
+      onBlur={(e) => {
+        setDraft(null);
+        rest.onBlur?.(e);
+      }}
+    />
+  );
 }

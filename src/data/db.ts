@@ -1,7 +1,8 @@
 import Dexie, { type Table } from 'dexie';
-import { getExercise, registerCustomExercises } from '../domain/exercises';
+import { allExercises, getExercise, registerCustomExercises } from '../domain/exercises';
+import { clampRest } from '../engine/sessionEdit';
 import { workingSets, type RoutineDay } from '../engine/routineImport';
-import type { Checkin, Exercise, Program, SetLog, WorkoutSession } from '../domain/types';
+import type { Checkin, Exercise, Muscle, Program, SetLog, WorkoutSession } from '../domain/types';
 import {
   DEFAULT_UNKNOWN_RIR,
   ManualRecordError,
@@ -72,6 +73,30 @@ export async function deleteSession(id: number, database: GymDB = db): Promise<v
     await database.sets.where('sessionId').equals(id).delete();
     await database.sessions.delete(id);
   });
+}
+
+export async function setSessionOrder(id: number, order: string[], database: GymDB = db): Promise<void> {
+  await database.sessions.update(id, { order });
+}
+
+export async function setSessionRest(id: number, exerciseId: string, restSec: number, database: GymDB = db): Promise<void> {
+  const s = await database.sessions.get(id);
+  if (!s) return;
+  await database.sessions.update(id, { rest: { ...s.rest, [exerciseId]: clampRest(restSec) } });
+}
+
+/** 목록에 없는 종목을 이름으로 추가. 같은 이름이 이미 있으면 그 id */
+export async function createCustomExercise(
+  input: { name: string; muscle: Muscle; compound: boolean },
+  database: GymDB = db,
+): Promise<string> {
+  const name = input.name.trim().replace(/\s+/g, ' ');
+  const same = allExercises().find((e) => e.name === name) ?? (await database.customExercises.filter((e) => e.name === name).first());
+  if (same) return same.id;
+  const id = `custom_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  await database.customExercises.add({ id, name, equipment: 'machine', compound: input.compound, muscles: { [input.muscle]: 1 }, increment: 2.5, custom: true });
+  await loadCustomExercises(database);
+  return id;
 }
 
 // ─────────────────────────────── 직접 입력 · 수정 · 교체

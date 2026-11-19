@@ -30,10 +30,10 @@ describe('운동 중 순서·휴식 저장', () => {
 
 describe('목록에 없는 종목 직접 추가', () => {
   it('이름으로 만들고, 같은 이름이면 기존 것을 다시 씀', async () => {
-    const id = await createCustomExercise({ name: ' 힙 쓰러스트 머신 ', muscle: 'glutes', compound: true }, database);
-    expect(getExercise(id)?.name).toBe('힙 쓰러스트 머신');
+    const id = await createCustomExercise({ name: ' 나만의 힙 머신 ', muscle: 'glutes', compound: true }, database);
+    expect(getExercise(id)?.name).toBe('나만의 힙 머신');
     expect(getExercise(id)?.muscles.glutes).toBe(1);
-    expect(await createCustomExercise({ name: '힙 쓰러스트 머신', muscle: 'glutes', compound: true }, database)).toBe(id);
+    expect(await createCustomExercise({ name: '나만의 힙 머신', muscle: 'glutes', compound: true }, database)).toBe(id);
     expect(await database.customExercises.count()).toBe(1);
   });
   it('기본 목록에 있는 이름이면 그 종목 id', async () => {

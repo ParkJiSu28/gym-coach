@@ -500,17 +500,17 @@ test.describe('J11 운동 중 사용성 (휴식·순서·직접 추가·완료 �
     await expect(page.getByRole('timer')).toContainText('목표 2:00');
     await page.reload();
     await expect(card(page, '바벨 벤치프레스').getByText('휴식 2:00')).toBeVisible();
-    await expect(card(page, '랫풀다운').getByText('휴식 2:00')).toBeVisible();
+    await expect(card(page, '랫 풀다운').getByText('휴식 2:00')).toBeVisible(); // 다른 종목은 그대로
   });
 
   test('종목 순서를 위/아래로 바꾼다', async ({ page }) => {
     await startTestRoutine(page);
     const headings = page.locator('section h2');
     await expect(headings.first()).toHaveText('바벨 벤치프레스');
-    await card(page, '랫풀다운').getByRole('button', { name: '위로' }).click();
-    await expect(headings.first()).toHaveText('랫풀다운');
+    await card(page, '랫 풀다운').getByRole('button', { name: '위로' }).click();
+    await expect(headings.first()).toHaveText('랫 풀다운');
     await page.reload();
-    await expect(page.locator('section h2').first()).toHaveText('랫풀다운');
+    await expect(page.locator('section h2').first()).toHaveText('랫 풀다운');
   });
 
   test('목록에 없는 종목은 검색한 이름 그대로 바로 추가된다', async ({ page }) => {
