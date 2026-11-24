@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { RecordExport } from '../components/RecordExport';
 import { Badge, Button, Card, CitationChip, Empty, WhyCard, fmtDate } from '../components/ui';
 import { BackupError, deleteSession, exportAll, importAll } from '../data/db';
 import { useAllSets, useAnalysisNow, useSessions } from '../data/hooks';
@@ -185,6 +186,7 @@ export function StatsPage() {
         )}
       </Card>
 
+      <RecordExport />
       <BackupCard />
     </div>
   );

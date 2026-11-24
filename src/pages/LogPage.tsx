@@ -5,7 +5,7 @@ import { PasteImport } from '../components/PasteImport';
 import { TransferCard } from '../components/TransferCard';
 import { RestTimer } from '../components/RestTimer';
 import { Badge, Button, Card, Empty, Stepper, WhyCard, fmtDuration } from '../components/ui';
-import { addSessionExercise, createCustomExercise, db, deleteSession, removeSessionExercise, finishSession, logSet, setSessionOrder, setSessionRest, startSession, swapExercise, updateSet } from '../data/db';
+import { addSessionExercise, cancelSession, changeSessionDay, createCustomExercise, db, deleteSession, removeSessionExercise, finishSession, logSet, setSessionOrder, setSessionRest, startSession, swapExercise, updateSet } from '../data/db';
 import { useActiveProgram, useAllSets, useCheckins, useNow, useOpenSession, useSessions } from '../data/hooks';
 import { allExercises, getExercise } from '../domain/exercises';
 import { MUSCLES, MUSCLE_LABEL, type Muscle, type ProgramExercise, type SetLog } from '../domain/types';
@@ -37,6 +37,7 @@ export function LogPage({ go }: { go: (t: Tab) => void }) {
   const [swapping, setSwapping] = useState<Slot | null>(null);
   const [ordering, setOrdering] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [switching, setSwitching] = useState(false);
 
   // 1분 단위(또는 데이터 변경 시)로만 컨텍스트 재계산 — 타이머 매초 갱신과 분리
   const minute = Math.floor(now / 60_000);
@@ -170,6 +171,21 @@ export function LogPage({ go }: { go: (t: Tab) => void }) {
     await deleteSession(open.id);
   }
 
+  async function cancelStart() {
+    if (!open?.id) return;
+    await cancelSession(open.id);
+    setSwitching(false);
+  }
+
+  async function switchDay(dayId?: string) {
+    if (!open?.id) return;
+    await changeSessionDay(open.id, dayId && program?.id ? { programId: program.id, dayId } : {});
+    setSwitching(false);
+    setOrdering(false);
+    setSwapping(null);
+    setNotice(null);
+  }
+
   async function addExercise(id: string) {
     if (!open?.id) return;
     setPicker(false);
@@ -223,6 +239,9 @@ export function LogPage({ go }: { go: (t: Tab) => void }) {
       <header className="flex items-center justify-between gap-2">
         <h1 className="text-2xl font-bold">{day?.name ?? '자유 운동'}</h1>
         <div className="flex gap-2">
+          <Button variant="ghost" onClick={() => setSwitching((v) => !v)}>
+            루틴 변경
+          </Button>
           {plans.length > 1 && (
             <Button variant="ghost" onClick={() => setOrdering((o) => !o)}>
               순서 변경
@@ -252,6 +271,33 @@ export function LogPage({ go }: { go: (t: Tab) => void }) {
         </div>
         {lastSet && <RestTimer startedAt={lastSet.completedAt} defaultTarget={restTarget} now={now} setKey={lastSet.id} />}
       </div>
+
+      {switching && (
+        <Card title="잘못 고르셨나요?" right={<Button variant="subtle" onClick={() => setSwitching(false)}>닫기</Button>} className="border-sky-700">
+          <p className="mb-2 text-xs text-slate-400">
+            {sessionSets.length ? `이미 기록한 ${sessionSets.length}세트는 그대로 두고 루틴만 바꿉니다.` : '아직 기록한 세트가 없어 바로 바꾸거나 취소할 수 있어요.'}
+          </p>
+          <div className="space-y-1.5">
+            {program?.days
+              .filter((d) => d.id !== open.dayId || open.programId !== program.id)
+              .map((d) => (
+                <Button key={d.id} variant="ghost" className="w-full" onClick={() => switchDay(d.id)}>
+                  {d.name}(으)로 바꾸기
+                </Button>
+              ))}
+            {open.dayId && (
+              <Button variant="ghost" className="w-full" onClick={() => switchDay()}>
+                자유 운동으로 바꾸기
+              </Button>
+            )}
+            {sessionSets.length === 0 && (
+              <Button variant="subtle" className="w-full" onClick={cancelStart}>
+                운동 시작 취소 (처음 화면으로)
+              </Button>
+            )}
+          </div>
+        </Card>
+      )}
 
       {ordering && <OrderEditor items={plans.map((p) => ({ id: p.slot.id, name: p.plan.exercise.name, done: isDone(p.plan) }))} onSave={saveOrder} onClose={() => setOrdering(false)} />}
 

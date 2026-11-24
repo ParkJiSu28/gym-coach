@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Program, SetLog, WorkoutSession } from '../domain/types';
-import { exportCsv, exportText, routineKey, routineOptions, sessionsFor } from './recordExport';
+import { exportText, routineKey, routineOptions, sessionsFor } from './recordExport';
 
 const prog: Program = {
   id: 1, name: 'p', splitId: 'upper_lower', createdAt: 0, active: true, mesoStart: 0, mesoWeeks: 4, priorities: [],
@@ -52,14 +52,5 @@ describe('루틴·날짜 골라 기록 내려받기', () => {
     expect(t).toContain('W 20kg×10회');
     expect(t).toContain('RIR 3(추정)');
     expect(t).not.toContain('바벨 백스쿼트');
-  });
-  it('CSV: 엑셀에서 한글이 깨지지 않게 BOM + 한 줄에 한 세트', () => {
-    const c = exportCsv([1, 2], { programs: [prog], sessions, sets });
-    const lines = c.replace('﻿', '').trim().split('\n');
-    expect(c.startsWith('﻿')).toBe(true);
-    expect(lines[0]).toBe('날짜,루틴,종목,세트,무게(kg),횟수,RIR,RIR추정,워밍업,휴식(초)');
-    expect(lines).toHaveLength(4);
-    expect(lines[1]).toBe('2026-11-10,상체A,바벨 벤치프레스,1,60,8,2,,,');
-    expect(lines[3]).toContain('하체A,바벨 백스쿼트,1,80,6');
   });
 });

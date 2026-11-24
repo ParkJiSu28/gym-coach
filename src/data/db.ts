@@ -85,6 +85,27 @@ export async function setSessionRest(id: number, exerciseId: string, restSec: nu
   await database.sessions.update(id, { rest: { ...s.rest, [exerciseId]: clampRest(restSec) } });
 }
 
+/** 잘못 시작한 운동 취소: 기록한 세트가 없을 때만 (기록 보호) */
+export async function cancelSession(id: number, database: GymDB = db): Promise<void> {
+  await database.transaction('rw', database.sessions, database.sets, async () => {
+    if ((await database.sets.where('sessionId').equals(id).count()) > 0) throw new Error('이미 기록한 세트가 있어 취소할 수 없습니다.');
+    await database.sessions.delete(id);
+  });
+}
+
+/** 진행 중 운동의 루틴(날)을 바꿈: 세트는 그대로, 이전 루틴 기준의 순서·교체·뺀 종목은 초기화 */
+export async function changeSessionDay(id: number, init: Pick<WorkoutSession, 'programId' | 'dayId'>, database: GymDB = db): Promise<void> {
+  const s = await database.sessions.get(id);
+  if (!s) throw new Error('세션을 찾을 수 없습니다.');
+  const next: WorkoutSession = { ...s, programId: init.programId, dayId: init.dayId };
+  delete next.order;
+  delete next.swaps;
+  delete next.removed;
+  if (!init.dayId) delete next.dayId;
+  if (init.programId === undefined) delete next.programId;
+  await database.sessions.put(next);
+}
+
 /** 운동 중 종목 추가: 세션에 저장해 화면을 나갔다 와도 남게. 뺐던 종목이면 다시 보이게 */
 export async function addSessionExercise(id: number, exerciseId: string, database: GymDB = db): Promise<void> {
   const s = await database.sessions.get(id);
