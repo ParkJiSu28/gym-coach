@@ -5,7 +5,7 @@ import { PasteImport } from '../components/PasteImport';
 import { TransferCard } from '../components/TransferCard';
 import { RestTimer } from '../components/RestTimer';
 import { Badge, Button, Card, Empty, Stepper, WhyCard, fmtDuration } from '../components/ui';
-import { createCustomExercise, db, deleteSession, finishSession, logSet, setSessionOrder, setSessionRest, startSession, swapExercise, updateSet } from '../data/db';
+import { addSessionExercise, createCustomExercise, db, deleteSession, removeSessionExercise, finishSession, logSet, setSessionOrder, setSessionRest, startSession, swapExercise, updateSet } from '../data/db';
 import { useActiveProgram, useAllSets, useCheckins, useNow, useOpenSession, useSessions } from '../data/hooks';
 import { allExercises, getExercise } from '../domain/exercises';
 import { MUSCLES, MUSCLE_LABEL, type Muscle, type ProgramExercise, type SetLog } from '../domain/types';
@@ -15,7 +15,8 @@ import { DEFAULT_UNKNOWN_RIR, ManualRecordError } from '../engine/records';
 import { scheduledDayFor } from '../engine/schedule';
 import { defaultRepRange, nextProgramDay } from '../engine/splits';
 import { alternativesFor, replaceInProgram } from '../engine/swap';
-import { applyOrder, clampRest, moveId, setDayRest } from '../engine/sessionEdit';
+import { applyOrder, clampRest, moveIndex, setDayRest } from '../engine/sessionEdit';
+import { DragList } from '../components/DragList';
 import { keepScreenOn, unlockAudio } from '../lib/alert';
 
 /** 화면에 표시할 종목 칸: 실제 수행 종목 id + (있다면) 원래 계획 종목 id */
@@ -32,10 +33,10 @@ export function LogPage({ go }: { go: (t: Tab) => void }) {
   const allSets = useAllSets();
   const checkins = useCheckins();
   const now = useNow(1000);
-  const [extra, setExtra] = useState<string[]>([]);
   const [picker, setPicker] = useState(false);
   const [swapping, setSwapping] = useState<Slot | null>(null);
   const [ordering, setOrdering] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   // 1분 단위(또는 데이터 변경 시)로만 컨텍스트 재계산 — 타이머 매초 갱신과 분리
   const minute = Math.floor(now / 60_000);
@@ -50,6 +51,7 @@ export function LogPage({ go }: { go: (t: Tab) => void }) {
 
   const slots = useMemo<Slot[]>(() => {
     const swaps = open?.swaps ?? {};
+    const removed = new Set(open?.removed ?? []);
     const out: Slot[] = [];
     for (const pe of day?.exercises ?? []) {
       const to = swaps[pe.exerciseId];
@@ -59,12 +61,13 @@ export function LogPage({ go }: { go: (t: Tab) => void }) {
         out.push({ id: to, plannedId: pe.exerciseId, pe: { ...pe, exerciseId: to, repMin, repMax, restSec: recommendedRest(ex) } });
       } else out.push({ id: pe.exerciseId, plannedId: pe.exerciseId, pe });
     }
-    for (const id of [...sessionSets.map((s) => s.exerciseId), ...extra.map((x) => swaps[x] ?? x)]) {
+    for (const id of [...sessionSets.map((s) => s.exerciseId), ...(open?.added ?? []).map((x) => swaps[x] ?? x)]) {
       if (!out.some((s) => s.id === id)) out.push({ id });
     }
-    const ids = applyOrder(out.map((s) => s.id), open?.order);
-    return ids.map((id) => out.find((s) => s.id === id)!);
-  }, [day, sessionSets, extra, open?.swaps, open?.order]);
+    const visible = out.filter((s) => !removed.has(s.id) || sessionSets.some((x) => x.exerciseId === s.id));
+    const ids = applyOrder(visible.map((s) => s.id), open?.order);
+    return ids.map((id) => visible.find((s) => s.id === id)!);
+  }, [day, sessionSets, open?.added, open?.removed, open?.swaps, open?.order]);
 
   const plans = useMemo(
     () => slots.map((slot) => ({ slot, plan: planExercise(ctx, slot.id, slot.pe) })).filter((x): x is { slot: Slot; plan: ExercisePlan } => x.plan !== null),
@@ -158,7 +161,6 @@ export function LogPage({ go }: { go: (t: Tab) => void }) {
   async function finish() {
     if (!open?.id) return;
     await finishSession(open.id);
-    setExtra([]);
     go('today');
   }
 
@@ -166,7 +168,39 @@ export function LogPage({ go }: { go: (t: Tab) => void }) {
     if (!open?.id) return;
     if (!window.confirm('이 세션과 기록된 세트를 모두 삭제할까요?')) return;
     await deleteSession(open.id);
-    setExtra([]);
+  }
+
+  async function addExercise(id: string) {
+    if (!open?.id) return;
+    setPicker(false);
+    const shown = open.swaps?.[id] ?? id;
+    if (plans.some((p) => p.slot.id === shown)) {
+      setNotice(`${getExercise(shown)?.name ?? '이 종목'}은(는) 이미 목록에 있어요.`);
+      document.getElementById(`ex-${shown}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    if (!getExercise(id)) {
+      setNotice('종목 정보를 찾지 못했어요. 다시 시도해 주세요.');
+      return;
+    }
+    await addSessionExercise(open.id, id);
+    setNotice(null);
+    requestAnimationFrame(() => document.getElementById(`ex-${shown}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  }
+
+  async function removeExercise(slot: Slot, name: string) {
+    if (!open?.id) return;
+    const n = sessionSets.filter((s) => s.exerciseId === slot.id).length;
+    if (!window.confirm(`"${name}"을(를) 이번 운동에서 삭제할까요?${n ? `
+기록한 ${n}세트도 함께 지워집니다.` : ''}`)) return;
+    const fromRoutine = !!(program?.id && day && slot.plannedId) && window.confirm(`루틴 "${day!.name}"에서도 빼서 다음부터 안 보이게 할까요?
+(취소 = 이번 운동에서만 삭제)`);
+    await removeSessionExercise(open.id, slot.id);
+    if (fromRoutine && program?.id && day && slot.plannedId) {
+      const days = program.days.map((d) => (d.id === day.id ? { ...d, exercises: d.exercises.filter((pe) => pe.exerciseId !== slot.plannedId) } : d));
+      await db.programs.update(program.id, { days });
+    }
+    if (swapping?.id === slot.id) setSwapping(null);
   }
 
   async function doSwap(slot: Slot, to: string, alsoRoutine: boolean) {
@@ -178,7 +212,8 @@ export function LogPage({ go }: { go: (t: Tab) => void }) {
         await swapExercise(open.id, slot.plannedId, slot.plannedId); // 루틴 자체가 바뀌었으므로 세션 교체 내역은 불필요
       }
     } else {
-      setExtra((e) => [...e.filter((x) => x !== slot.id), to]);
+      const s = await db.sessions.get(open.id);
+      await db.sessions.update(open.id, { added: [...(s?.added ?? []).filter((x) => x !== slot.id && x !== to), to] });
     }
     setSwapping(null);
   }
@@ -223,7 +258,7 @@ export function LogPage({ go }: { go: (t: Tab) => void }) {
       {plans.length === 0 && <Empty>아래에서 운동을 추가하세요.</Empty>}
 
       {plans.map(({ slot, plan }) => (
-        <div key={slot.id} className="space-y-2">
+        <div key={slot.id} id={`ex-${slot.id}`} className="scroll-mt-28 space-y-2">
           <ExerciseLogCard
             plan={plan}
             sessionId={open.id!}
@@ -231,6 +266,7 @@ export function LogPage({ go }: { go: (t: Tab) => void }) {
             lastTime={exerciseHistory(ctx.sets, plan.exercise.id).at(-1)?.sets}
             swappedFrom={slot.plannedId && slot.plannedId !== slot.id ? getExercise(slot.plannedId)?.name : undefined}
             onSwap={() => setSwapping(swapping?.id === slot.id ? null : slot)}
+            onRemove={() => removeExercise(slot, plan.exercise.name)}
             restSec={restOf(plan)}
             onRest={(d) => changeRest(slot, plan, d)}
           />
@@ -238,16 +274,16 @@ export function LogPage({ go }: { go: (t: Tab) => void }) {
         </div>
       ))}
 
+      {notice && (
+        <p role="status" className="rounded-xl border border-amber-700 bg-amber-950/40 px-3 py-2 text-sm text-amber-200">
+          {notice}
+        </p>
+      )}
+
       {picker ? (
-        <ExercisePicker
-          onPick={(id) => {
-            setExtra((e) => [...e, id]);
-            setPicker(false);
-          }}
-          onClose={() => setPicker(false)}
-        />
+        <ExercisePicker onPick={addExercise} onClose={() => setPicker(false)} />
       ) : (
-        <Button variant="ghost" className="w-full" onClick={() => setPicker(true)}>
+        <Button variant="ghost" className="w-full" onClick={() => (setNotice(null), setPicker(true))}>
           + 운동 추가
         </Button>
       )}
@@ -300,6 +336,7 @@ function ExerciseLogCard({
   lastTime,
   swappedFrom,
   onSwap,
+  onRemove,
   restSec,
   onRest,
 }: {
@@ -309,6 +346,7 @@ function ExerciseLogCard({
   lastTime?: SetLog[];
   swappedFrom?: string;
   onSwap: () => void;
+  onRemove: () => void;
   restSec: number;
   onRest: (delta: number) => void;
 }) {
@@ -365,6 +403,9 @@ function ExerciseLogCard({
           )}
           <button type="button" onClick={onSwap} className="h-8 rounded-lg border border-slate-700 px-2 text-xs text-slate-200">
             교체
+          </button>
+          <button type="button" onClick={onRemove} aria-label={`${plan.exercise.name} 삭제`} className="h-8 rounded-lg border border-slate-700 px-2 text-xs text-rose-300">
+            삭제
           </button>
         </span>
       }
@@ -648,27 +689,26 @@ function OrderEditor({ items, onSave, onClose }: { items: { id: string; name: st
   const byId = (id: string) => items.find((i) => i.id === id)!;
   return (
     <Card title="운동 순서" right={<Button variant="subtle" onClick={onClose}>닫기</Button>} className="border-emerald-700">
-      <p className="mb-2 text-xs text-slate-400">↑ ↓ 로 옮긴 뒤 "순서 저장". 루틴의 순서도 같이 바뀝니다.</p>
-      <ol aria-label="운동 순서" className="space-y-1.5">
-        {ids.map((id, i) => {
+      <p className="mb-2 text-xs text-slate-400">종목을 꾹 잡고 원하는 위치로 끌어다 놓으세요. "순서 저장"하면 루틴의 순서도 같이 바뀝니다.</p>
+      <DragList
+        label="운동 순서"
+        items={ids}
+        keyOf={(id) => id}
+        onMove={(from, to) => setIds((x) => moveIndex(x, from, to))}
+        render={(id, i, handle, dragging) => {
           const it = byId(id);
           return (
-            <li key={id} className="flex items-center gap-2 rounded-xl bg-slate-950/60 px-3 py-2">
+            <div {...handle} aria-label={`${it.name} 끌어서 이동`} className={`flex min-h-12 items-center gap-2 rounded-xl px-3 py-2 ${dragging ? 'bg-slate-700' : 'bg-slate-950/60'}`}>
               <span className="w-6 text-center font-bold text-slate-400 tabular-nums">{i + 1}</span>
               <span className={`flex-1 ${it.done ? 'text-emerald-300' : ''}`}>
                 {it.name}
                 {it.done ? ' ✓' : ''}
               </span>
-              <button type="button" aria-label={`${it.name} 위로`} disabled={i === 0} onClick={() => setIds((x) => moveId(x, id, -1))} className="h-10 w-10 rounded-lg bg-slate-800 text-lg disabled:opacity-30">
-                ↑
-              </button>
-              <button type="button" aria-label={`${it.name} 아래로`} disabled={i === ids.length - 1} onClick={() => setIds((x) => moveId(x, id, 1))} className="h-10 w-10 rounded-lg bg-slate-800 text-lg disabled:opacity-30">
-                ↓
-              </button>
-            </li>
+              <span aria-hidden className="text-xl text-slate-500">≡</span>
+            </div>
           );
-        })}
-      </ol>
+        }}
+      />
       <Button className="mt-3 w-full py-3" onClick={() => onSave(ids)}>
         순서 저장
       </Button>

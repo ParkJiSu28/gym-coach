@@ -85,6 +85,32 @@ export async function setSessionRest(id: number, exerciseId: string, restSec: nu
   await database.sessions.update(id, { rest: { ...s.rest, [exerciseId]: clampRest(restSec) } });
 }
 
+/** 운동 중 종목 추가: 세션에 저장해 화면을 나갔다 와도 남게. 뺐던 종목이면 다시 보이게 */
+export async function addSessionExercise(id: number, exerciseId: string, database: GymDB = db): Promise<void> {
+  const s = await database.sessions.get(id);
+  if (!s) throw new Error('세션을 찾을 수 없습니다.');
+  const added = s.added ?? [];
+  await database.sessions.update(id, {
+    added: added.includes(exerciseId) ? added : [...added, exerciseId],
+    removed: (s.removed ?? []).filter((x) => x !== exerciseId),
+  });
+}
+
+/** 운동 중 종목 삭제: 이 세션에서 그 종목 세트를 지우고 목록에서 뺀다. 세션과 다른 종목 기록은 그대로 */
+export async function removeSessionExercise(id: number, exerciseId: string, database: GymDB = db): Promise<void> {
+  await database.transaction('rw', database.sessions, database.sets, async () => {
+    const s = await database.sessions.get(id);
+    if (!s) throw new Error('세션을 찾을 수 없습니다.');
+    await database.sets.where('sessionId').equals(id).filter((x) => x.exerciseId === exerciseId).delete();
+    const removed = s.removed ?? [];
+    await database.sessions.update(id, {
+      added: (s.added ?? []).filter((x) => x !== exerciseId),
+      removed: removed.includes(exerciseId) ? removed : [...removed, exerciseId],
+      order: (s.order ?? []).filter((x) => x !== exerciseId),
+    });
+  });
+}
+
 /** 목록에 없는 종목을 이름으로 추가. 같은 이름이 이미 있으면 그 id */
 export async function createCustomExercise(
   input: { name: string; muscle: Muscle; compound: boolean },

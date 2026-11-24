@@ -13,7 +13,8 @@ import { MUSCLES, MUSCLE_LABEL, type Muscle, type Program, type SplitId } from '
 import { mesoPosition, recommendedRest } from '../engine/progression';
 import { SPLIT_INFO, dayDurationMin, defaultRepRange, generateProgram, programWeeklyVolume, recommendSplit } from '../engine/splits';
 import { volumeStatus } from '../engine/volume';
-import { clampRest, moveInDay } from '../engine/sessionEdit';
+import { clampRest, moveIndex } from '../engine/sessionEdit';
+import { DragList } from '../components/DragList';
 
 export function ProgramPage() {
   const program = useActiveProgram();
@@ -202,9 +203,18 @@ function DayList({ program, editable = false, onChange }: { program: Program; ed
             <span>{d.name}</span>
             <span className="text-sm font-normal text-slate-400">약 {dayDurationMin(d)}분</span>
           </p>
-          <ul className="space-y-1.5 text-sm">
-            {d.exercises.map((pe, ei) => (
-              <li key={`${pe.exerciseId}-${ei}`} className="flex flex-wrap items-center justify-between gap-2">
+          <DragList
+            className="space-y-1.5 text-sm"
+            items={d.exercises.map((pe, ei) => ({ pe, key: `${pe.exerciseId}-${d.exercises.slice(0, ei).filter((x) => x.exerciseId === pe.exerciseId).length}` }))}
+            keyOf={(x) => x.key}
+            onMove={(from, to) => update((p) => void (p.days[di]!.exercises = moveIndex(p.days[di]!.exercises, from, to)))}
+            render={({ pe }, ei, handle, dragging) => (
+              <div className={`flex flex-wrap items-center justify-between gap-2 rounded-lg ${dragging ? 'bg-slate-800' : ''}`}>
+                {editable && (
+                  <span {...handle} aria-label={`${getExercise(pe.exerciseId)?.name ?? pe.exerciseId} 끌어서 이동`} className="-my-1 flex h-9 w-8 items-center justify-center text-xl text-slate-500">
+                    ≡
+                  </span>
+                )}
                 <span className="flex-1">
                   {getExercise(pe.exerciseId)?.name ?? pe.exerciseId}
                   {pe.targetWeight !== undefined && (
@@ -232,12 +242,6 @@ function DayList({ program, editable = false, onChange }: { program: Program; ed
                     <button type="button" aria-label="휴식 늘리기" className="h-7 w-7 rounded bg-slate-800" onClick={() => update((p) => void (p.days[di]!.exercises[ei]!.restSec = clampRest(pe.restSec + 15)))}>
                       +
                     </button>
-                    <button type="button" aria-label="위로" disabled={ei === 0} className="h-7 w-7 rounded bg-slate-800 disabled:opacity-30" onClick={() => onChange?.(moveInDay(program, d.id, ei, -1))}>
-                      ↑
-                    </button>
-                    <button type="button" aria-label="아래로" disabled={ei === d.exercises.length - 1} className="h-7 w-7 rounded bg-slate-800 disabled:opacity-30" onClick={() => onChange?.(moveInDay(program, d.id, ei, 1))}>
-                      ↓
-                    </button>
                     <button type="button" aria-label="종목 삭제" className="h-7 w-7 text-slate-500 hover:text-rose-400" onClick={() => update((p) => void p.days[di]!.exercises.splice(ei, 1))}>
                       ✕
                     </button>
@@ -247,9 +251,9 @@ function DayList({ program, editable = false, onChange }: { program: Program; ed
                     {pe.sets}세트 × {pe.repMin}~{pe.repMax}회
                   </span>
                 )}
-              </li>
-            ))}
-          </ul>
+              </div>
+            )}
+          />
           {editable && (
             <select
               value=""

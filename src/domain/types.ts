@@ -70,6 +70,10 @@ export interface WorkoutSession {
   order?: string[];
   /** 이번 세션에서 정한 종목별 휴식(초) */
   rest?: Record<string, number>;
+  /** 이번 세션에 추가한 종목 id */
+  added?: string[];
+  /** 이번 세션에서 뺀 종목 id (루틴 종목 숨김) */
+  removed?: string[];
 }
 
 export interface SetLog {

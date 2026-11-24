@@ -14,6 +14,17 @@ export function moveId(ids: string[], id: string, dir: -1 | 1): string[] {
   return out;
 }
 
+/** 끌어서 놓기: from 위치 항목을 to 위치로 (to 는 범위 안으로 맞춤) */
+export function moveIndex<T>(arr: T[], from: number, to: number): T[] {
+  if (from < 0 || from >= arr.length) return arr;
+  const t = Math.min(arr.length - 1, Math.max(0, to));
+  if (t === from) return arr;
+  const out = [...arr];
+  const [x] = out.splice(from, 1);
+  out.splice(t, 0, x!);
+  return out;
+}
+
 /** 저장된 순서를 먼저, 나머지는 원래 순서대로 뒤에 */
 export function applyOrder(ids: string[], order?: string[]): string[] {
   if (!order?.length) return ids;
