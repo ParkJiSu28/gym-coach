@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getExercise } from '../domain/exercises';
 import { parseRoutinePlan, planToProgram } from '../engine/claudeBridge';
 import { generateProgram } from '../engine/splits';
-import { addManualEntry, addSessionExercise, removeSessionExercise, createCustomExercise, GymDB, logSet, saveActiveProgram, setSessionOrder, setSessionRest, startSession } from './db';
+import { addManualEntry, addSessionExercise, cancelSession, changeSessionDay, removeSessionExercise, createCustomExercise, GymDB, logSet, saveActiveProgram, setSessionOrder, setSessionRest, startSession } from './db';
 
 let database: GymDB;
 let n = 0;
@@ -88,5 +88,31 @@ describe('운동 중 종목 추가·삭제', () => {
     const s = await database.sessions.get(sid);
     expect(s?.removed).toEqual([]);
     expect(s?.added).toEqual(['squat']);
+  });
+});
+
+describe('잘못 시작한 운동 되돌리기', () => {
+  it('세트가 없으면 시작 취소 = 세션 삭제', async () => {
+    const sid = await startSession({ programId: 1, dayId: 'a' }, database);
+    await cancelSession(sid, database);
+    expect(await database.sessions.count()).toBe(0);
+  });
+  it('세트가 있으면 시작 취소는 거부 (기록 보호)', async () => {
+    const sid = await startSession({}, database);
+    await logSet({ sessionId: sid, exerciseId: 'bench_press', weight: 60, reps: 8, rir: 2, rirEstimated: false }, database);
+    await expect(cancelSession(sid, database)).rejects.toThrow();
+    expect(await database.sets.count()).toBe(1);
+  });
+  it('다른 루틴으로 바꾸면 세트는 그대로, 순서·교체·뺀 종목은 초기화', async () => {
+    const sid = await startSession({ programId: 1, dayId: 'a' }, database);
+    await logSet({ sessionId: sid, exerciseId: 'bench_press', weight: 60, reps: 8, rir: 2, rirEstimated: false }, database);
+    await setSessionOrder(sid, ['x'], database);
+    await removeSessionExercise(sid, 'squat', database);
+    await changeSessionDay(sid, { programId: 1, dayId: 'b' }, database);
+    const s = await database.sessions.get(sid);
+    expect(s?.dayId).toBe('b');
+    expect(s?.order).toBeUndefined();
+    expect(s?.removed).toBeUndefined();
+    expect(await database.sets.count()).toBe(1);
   });
 });
