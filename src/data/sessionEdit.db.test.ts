@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getExercise } from '../domain/exercises';
 import { parseRoutinePlan, planToProgram } from '../engine/claudeBridge';
 import { generateProgram } from '../engine/splits';
-import { addManualEntry, createCustomExercise, GymDB, logSet, saveActiveProgram, setSessionOrder, setSessionRest, startSession } from './db';
+import { addManualEntry, addSessionExercise, removeSessionExercise, createCustomExercise, GymDB, logSet, saveActiveProgram, setSessionOrder, setSessionRest, startSession } from './db';
 
 let database: GymDB;
 let n = 0;
@@ -56,5 +56,37 @@ describe('AI 피드백으로 받은 새 루틴 적용 — 기존 기록은 그�
     const programs = await database.programs.toArray();
     expect(programs).toHaveLength(2);
     expect(programs.filter((p) => p.active).map((p) => p.source)).toEqual(['imported']);
+  });
+});
+
+describe('운동 중 종목 추가·삭제', () => {
+  it('추가한 종목은 세션에 저장돼 화면을 나갔다 와도 남음 (중복 없이)', async () => {
+    const sid = await startSession({}, database);
+    await addSessionExercise(sid, 'lat_pulldown', database);
+    await addSessionExercise(sid, 'lat_pulldown', database);
+    await addSessionExercise(sid, 'bench_press', database);
+    expect((await database.sessions.get(sid))?.added).toEqual(['lat_pulldown', 'bench_press']);
+  });
+  it('삭제하면 그 종목 세트만 지우고 세션과 다른 종목 기록은 그대로', async () => {
+    const sid = await startSession({}, database);
+    await logSet({ sessionId: sid, exerciseId: 'bench_press', weight: 60, reps: 8, rir: 2, rirEstimated: false }, database);
+    await logSet({ sessionId: sid, exerciseId: 'lat_pulldown', weight: 50, reps: 10, rir: 2, rirEstimated: false }, database);
+    await addSessionExercise(sid, 'lat_pulldown', database);
+    await setSessionOrder(sid, ['lat_pulldown', 'bench_press'], database);
+    await removeSessionExercise(sid, 'lat_pulldown', database);
+    const s = await database.sessions.get(sid);
+    expect(s).toBeDefined();
+    expect(s?.added).toEqual([]);
+    expect(s?.removed).toEqual(['lat_pulldown']);
+    expect(s?.order).toEqual(['bench_press']);
+    expect((await database.sets.toArray()).map((x) => x.exerciseId)).toEqual(['bench_press']);
+  });
+  it('삭제했던 종목을 다시 추가하면 다시 보임', async () => {
+    const sid = await startSession({}, database);
+    await removeSessionExercise(sid, 'squat', database);
+    await addSessionExercise(sid, 'squat', database);
+    const s = await database.sessions.get(sid);
+    expect(s?.removed).toEqual([]);
+    expect(s?.added).toEqual(['squat']);
   });
 });

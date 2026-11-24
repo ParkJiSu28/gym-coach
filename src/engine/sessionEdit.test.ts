@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Program } from '../domain/types';
-import { applyOrder, moveId, moveInDay, parseNumDraft, setDayRest } from './sessionEdit';
+import { applyOrder, moveId, moveIndex, moveInDay, parseNumDraft, setDayRest } from './sessionEdit';
 
 const prog = (): Program =>
   ({
@@ -48,5 +48,18 @@ describe('숫자 칸 입력', () => {
     expect(parseNumDraft('62.5')).toBe(62.5);
     expect(parseNumDraft('62.')).toBe(62);
     expect(parseNumDraft('abc')).toBeNull();
+  });
+});
+
+describe('끌어서 순서 바꾸기', () => {
+  it('moveIndex: 한 번에 원하는 위치로', () => {
+    expect(moveIndex(['a', 'b', 'c', 'd'], 0, 3)).toEqual(['b', 'c', 'd', 'a']);
+    expect(moveIndex(['a', 'b', 'c', 'd'], 3, 0)).toEqual(['d', 'a', 'b', 'c']);
+    expect(moveIndex(['a', 'b', 'c', 'd'], 1, 2)).toEqual(['a', 'c', 'b', 'd']);
+  });
+  it('범위 밖이거나 같은 위치면 그대로', () => {
+    expect(moveIndex(['a', 'b'], 0, 0)).toEqual(['a', 'b']);
+    expect(moveIndex(['a', 'b'], 0, 9)).toEqual(['b', 'a']);
+    expect(moveIndex(['a', 'b'], -1, 1)).toEqual(['a', 'b']);
   });
 });
